@@ -12,10 +12,38 @@ function BunnyHop.new(context)
     self._jumpDebounce = 0.12
     local Modules = {}
 
+    local function makeSafeProxy(mod)
+        local proxy = {}
+        local mt = {}
+        mt.__index = function(_, k)
+            local v = mod[k]
+            if type(v) == "function" then
+                return function(...)
+                    local args = table.pack(...)
+                    if args.n >= 1 and args[1] == proxy then
+                        args[1] = mod
+                    end
+                    local ok, res = pcall(function() return v(table.unpack(args, 1, args.n)) end)
+                    if not ok then
+                        warn("BunnyHop SafeProxy error:", res)
+                    end
+                    return res
+                end
+            else
+                return v
+            end
+        end
+        mt.__newindex = function()
+            error("attempt to modify read-only proxy")
+        end
+        setmetatable(proxy, mt)
+        return proxy
+    end
+
     for _, Value in pairs(getloadedmodules()) do
         local ok, Module = pcall(require, Value)
         if ok and typeof(Module) == "table" and Module and type(Module.jump) == "function" then
-            Modules["Controllers/CharacterController"] = Module
+            Modules["Controllers/CharacterController"] = makeSafeProxy(Module)
             break
         end
     end
