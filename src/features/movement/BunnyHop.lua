@@ -49,41 +49,6 @@ local RunOnFixedThread = function(Identity, Function, ...)
     end, ...)
 end
 
-local Modules = {}
-for Index, Value in getloadedmodules() do
-    local Ok, Module = pcall(require, Value)
-    if Ok and typeof(Module) == "table" and Module then
-        if Module.getWeaponKickRotation and Module.weaponKick then
-            Modules["Controllers/CameraController"] = Module
-            continue
-        end
-        if Module.getCurrentEquipped then
-            Modules["InventoryController"] = Module
-            continue
-        end
-        if Module.cast and Module.castThrough then
-            Modules["Raycast"] = Module
-            continue
-        end
-        if rawget(Module, "shoot") and rawget(Module, "setupRecoil") then
-            Modules["WeaponController"] = Module
-            continue
-        end
-        if Module.jump then
-            Modules["Controllers/CharacterController"] = Module
-            continue
-        end
-        if Module.getMovementVelocity then
-            Modules["Viewmodel/Bobble"] = Module
-            continue
-        end
-        if Module.TakeStamina then
-            Modules["Classes/Character"] = Module
-            continue
-        end
-    end
-end
-
 local BunnyHop = {}
 BunnyHop.__index = BunnyHop
 
