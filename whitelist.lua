@@ -1,0 +1,13 @@
+return {
+  "Madium",
+  "Ronix",
+  "Volt",
+  "Potassium",
+  "Synapse Z",
+  "Seliware",
+  "Matcha",
+  "Solara",
+  "Delta",
+  "MacSploit",
+  "OpiumwareMac",
+};
