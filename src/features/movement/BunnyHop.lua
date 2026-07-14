@@ -1,3 +1,8 @@
+if not LPH_OBFUSCATED then
+	LPH_NO_VIRTUALIZE = function(...) return ... end
+	LPH_CRASH = function() return print(debug.traceback()) end
+end
+
 local StartTick = tick()
 
 local Players = cloneref(game:GetService("Players"))
@@ -38,16 +43,61 @@ local GetBloxStrikeFunction = function(Function)
 end
 
 local RunOnFixedThread = function(Identity, Function, ...)
-    local Old = Function
-    Function = function(...)
-        setthreadidentity(Identity)
-        return Old(...)
-    end
-    task.spawn(function(...)
-        local Thread = coroutine.create(Function)
-        coroutine.resume(Thread, ...)
-    end, ...)
+	local Old = Function
+	Function = function(...)
+		setthreadidentity(Identity)
+		return Old(...)
+	end
+	task.spawn(function(...)
+		local Thread = coroutine.create(Function)
+		coroutine.resume(Thread, ...)
+	end, ...)
 end
+
+local Modules = LPH_NO_VIRTUALIZE(function()
+    local Modules = {}
+
+    for Index, Value in getloadedmodules() do
+        local Ok, Module = pcall(require, Value)
+        if Ok and typeof(Module) == "table" and Module then
+        
+            if Module.getCurrentEquipped then
+                Modules["InventoryController"] = Module
+                continue
+            end
+
+            if Module.jump then
+                Modules["Controllers/CharacterController"] = Module
+                continue
+            end
+
+        end
+    end
+
+    return Modules
+end)()
+
+local Remotes = require(ReplicatedStorage.Database.Security.Remotes)
+
+local Money = {
+    Constants = {
+        WeaponSettings = {}
+    },
+    GetRayIgnore = GetBloxStrikeFunction("Common.GetRayIgnore")
+}
+
+for Index, Value in ReplicatedStorage.Database.Custom.Weapons:GetChildren() do
+    if Value and Value:IsA("ModuleScript") then
+        local IsOk, Module = pcall(require, Value)
+        if IsOk then
+            Money.Constants.WeaponSettings[Value.Name] = Module
+        end
+    end
+end
+
+-- Bunnyhop execution is handled by the module below and is controlled by its enabled state.
+
+----------------------------------------------
 
 local BunnyHop = {}
 BunnyHop.__index = BunnyHop
@@ -60,80 +110,28 @@ function BunnyHop.new(context)
     self.cleaner = context.Cleaner.new()
     self.errorHandler = context.errorHandler
     self.enabled = false
-    self._lastJump = 0
-    self._jumpDebounce = 0.12
-    self._isJumping = false
-    self._jumpFunction = nil
-    self._rawModule = nil
 
-    local function findAndSetController()
-        for _, Value in pairs(getloadedmodules()) do
-            local ok, Module = pcall(require, Value)
-            if ok and typeof(Module) == "table" and Module and type(Module.jump) == "function" then
-                self._rawModule = Module
-                self._jumpFunction = Module.jump
-                return true
-            end
-        end
-        self._rawModule = nil
-        self._jumpFunction = nil
-        return false
-    end
-
-    -- Initial find
-    findAndSetController()
-
-    -- Watch for character respawn and refresh the controller
-    self.cleaner:Give(LocalPlayer.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        findAndSetController()
-    end))
-
-    self.cleaner:Give(self.errorHandler:Connect(Heartbeat, "BunnyHop Heartbeat", function()
+    self.cleaner:Give(self.errorHandler:Connect(self.services.RunService.Heartbeat, "BunnyHop Heartbeat", function()
         if not self.enabled then
             return
         end
 
-        local character = LocalPlayer.Character
-        if not character then
+        if not self.globals:IsAlive() then
             return
         end
 
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local player = self.globals:GetPlayer()
+        local character = player and player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         if not humanoid then
             return
         end
 
-        if not UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            self._isJumping = false
-            return
-        end
-
-        local state = humanoid:GetState()
-        
-        -- Auto-jump when on ground and holding space
-        if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.RunningNoPhysics then
-            if not self._isJumping and self._jumpFunction then
-                local now = tick()
-                if (now - self._lastJump) >= self._jumpDebounce then
-                    self._lastJump = now
-                    self._isJumping = true
-                    
-                    RunOnFixedThread(Identity, function()
-                        local ok, err = pcall(function()
-                            self._jumpFunction(self._rawModule)
-                        end)
-                        if not ok then
-                            warn("BunnyHop: jump error:", err)
-                            findAndSetController()
-                        end
-                    end)
-                end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            local characterController = Modules["Controllers/CharacterController"]
+            if characterController and characterController.jump then
+                characterController.jump()
             end
-        elseif state == Enum.HumanoidStateType.Landed then
-            self._isJumping = false
-        elseif state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
-            self._isJumping = true
         end
     end))
 
@@ -142,16 +140,10 @@ end
 
 function BunnyHop:SetEnabled(value)
     self.enabled = value == true
-    if not self.enabled then
-        self._isJumping = false
-    end
 end
 
 function BunnyHop:Destroy()
     self.cleaner:Cleanup()
-    self._jumpFunction = nil
-    self._rawModule = nil
-    self._isJumping = false
 end
 
 return BunnyHop
