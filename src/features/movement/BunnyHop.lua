@@ -1,3 +1,25 @@
+if not LPH_OBFUSCATED then
+    LPH_NO_VIRTUALIZE = function(...)
+		return ...;
+	end;
+end;
+
+local Modules = LPH_NO_VIRTUALIZE(function()
+    local Modules = {}
+
+    for Index, Value in getloadedmodules() do
+        local Ok, Module = pcall(require, Value)
+        if Ok and typeof(Module) == "table" and Module then
+            if Module.jump then
+                Modules["Controllers/CharacterController"] = Module
+                continue
+            end
+        end
+    end
+
+    return Modules
+end)()
+
 local BunnyHop = {}
 BunnyHop.__index = BunnyHop
 
@@ -8,16 +30,6 @@ function BunnyHop.new(context)
     self.cleaner = context.Cleaner.new()
     self.errorHandler = context.errorHandler
     self.enabled = false
-    local Modules = {}
-    for Index, Value in getloadedmodules() do
-        local Ok, Module = pcall(require, Value)
-        if Ok and typeof(Module) == "table" and Module then
-            if Module.jump then
-                Modules["Controllers/CharacterController"] = Module
-                continue
-            end
-        end
-    end
     self.modules = Modules
 
     self.cleaner:Give(self.errorHandler:Connect(self.services.RunService.RenderStepped, "BunnyHop RenderStepped", function()
