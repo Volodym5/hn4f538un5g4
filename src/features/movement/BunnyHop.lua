@@ -10,44 +10,31 @@ function BunnyHop.new(context)
     self.enabled = false
     self._lastJump = 0
     self._jumpDebounce = 0.12
-    local Modules = {}
-
-    local function makeSafeProxy(mod)
-        local proxy = {}
-        local mt = {}
-        mt.__index = function(_, k)
-            local v = mod[k]
-            if type(v) == "function" then
-                return function(...)
-                    local args = table.pack(...)
-                    if args.n >= 1 and args[1] == proxy then
-                        args[1] = mod
-                    end
-                    local ok, res = pcall(function() return v(table.unpack(args, 1, args.n)) end)
-                    if not ok then
-                        warn("BunnyHop SafeProxy error:", res)
-                    end
-                    return res
-                end
-            else
-                return v
+    self._jumpFunction = nil
+    self._rawModule = nil
+    
+    local function findAndSetController()
+        for _, Value in pairs(getloadedmodules()) do
+            local ok, Module = pcall(require, Value)
+            if ok and typeof(Module) == "table" and Module and type(Module.jump) == "function" then
+                self._rawModule = Module
+                self._jumpFunction = Module.jump
+                return true
             end
         end
-        mt.__newindex = function()
-            error("attempt to modify read-only proxy")
-        end
-        setmetatable(proxy, mt)
-        return proxy
+        self._rawModule = nil
+        self._jumpFunction = nil
+        return false
     end
 
-    for _, Value in pairs(getloadedmodules()) do
-        local ok, Module = pcall(require, Value)
-        if ok and typeof(Module) == "table" and Module and type(Module.jump) == "function" then
-            Modules["Controllers/CharacterController"] = makeSafeProxy(Module)
-            break
-        end
-    end
-    self.modules = Modules
+    -- Initial find
+    findAndSetController()
+
+    -- Watch for character respawn and refresh the controller
+    self.cleaner:Give(self.globals:GetPlayer().CharacterAdded:Connect(function()
+        task.wait(0.5) -- Small delay to ensure modules are loaded
+        findAndSetController()
+    end))
 
     self.cleaner:Give(self.errorHandler:Connect(self.services.RunService.RenderStepped, "BunnyHop RenderStepped", function()
         if not self.enabled or not self.globals:IsAlive() then
@@ -66,8 +53,7 @@ function BunnyHop.new(context)
 
         local state = humanoid:GetState()
         if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
-            local characterController = self.modules["Controllers/CharacterController"]
-            if characterController and type(characterController.jump) == "function" then
+            if self._jumpFunction then
                 local now = tick()
                 if (now - self._lastJump) < self._jumpDebounce then
                     return
@@ -75,12 +61,17 @@ function BunnyHop.new(context)
                 self._lastJump = now
                 task.spawn(function()
                     local ok, err = pcall(function()
-                        characterController.jump()
+                        self._jumpFunction(self._rawModule) -- Call with the raw module as self
                     end)
                     if not ok then
-                        warn("BunnyHop: characterController.jump error:", err)
+                        warn("BunnyHop: jump error:", err)
+                        -- Try to refresh on failure
+                        findAndSetController()
                     end
                 end)
+            else
+                -- Try to find the controller if it's missing
+                findAndSetController()
             end
         end
     end))
@@ -94,6 +85,8 @@ end
 
 function BunnyHop:Destroy()
     self.cleaner:Cleanup()
+    self._jumpFunction = nil
+    self._rawModule = nil
 end
 
 return BunnyHop
