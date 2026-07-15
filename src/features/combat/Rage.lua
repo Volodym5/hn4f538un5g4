@@ -28,6 +28,63 @@ local function getCenter(camera)
     return Vector2.new(camera.ViewportSize.X * 0.5, camera.ViewportSize.Y * 0.5)
 end
 
+local function getHookFunction()
+    local candidates = {}
+
+    if type(hookfunction) == "function" then
+        candidates[#candidates + 1] = hookfunction
+    end
+
+    if getgenv then
+        local env = getgenv()
+        if type(env) == "table" and type(env.hookfunction) == "function" then
+            candidates[#candidates + 1] = env.hookfunction
+        end
+        if type(env) == "table" and type(env.BloxstrikeSavedHookFunction) == "function" then
+            candidates[#candidates + 1] = env.BloxstrikeSavedHookFunction
+        end
+    end
+
+    if syn and type(syn) == "table" and type(syn.hookfunction) == "function" then
+        candidates[#candidates + 1] = syn.hookfunction
+    end
+
+    if _G and type(_G) == "table" then
+        if type(_G.hookfunction) == "function" then
+            candidates[#candidates + 1] = _G.hookfunction
+        end
+        if type(_G.BloxstrikeSavedHookFunction) == "function" then
+            candidates[#candidates + 1] = _G.BloxstrikeSavedHookFunction
+        end
+    end
+
+    for _, candidate in ipairs(candidates) do
+        if type(candidate) == "function" then
+            return candidate
+        end
+    end
+
+    return nil
+end
+
+local function captureHookFunction()
+    local hookFn = getHookFunction()
+    if type(hookFn) == "function" then
+        if getgenv then
+            local env = getgenv()
+            if type(env) == "table" then
+                env.BloxstrikeSavedHookFunction = hookFn
+            end
+        end
+        if _G and type(_G) == "table" then
+            _G.BloxstrikeSavedHookFunction = hookFn
+        end
+    end
+    return hookFn
+end
+
+local CAPTURED_HOOK_FUNCTION = captureHookFunction()
+
 function Rage.new(context)
     local self = setmetatable({}, Rage)
 
@@ -621,9 +678,14 @@ function Rage:_bindWeaponRuntime(root)
 end
 
 function Rage:_installSilentAimHooks()
-    if type(hookfunction) ~= "function" then
+    local hookFn = CAPTURED_HOOK_FUNCTION or getHookFunction()
+    if type(hookFn) ~= "function" then
         self:_debugSilentAim("hookfunction is unavailable")
         return false
+    end
+
+    if CAPTURED_HOOK_FUNCTION then
+        self:_debugSilentAim("using captured hookfunction reference")
     end
 
     if not self.inventoryController then
@@ -667,7 +729,7 @@ function Rage:_installSilentAimHooks()
             return fn
         end
 
-        originalRaycast = hookfunction(bullet._performRaycast, hookWrapper(function(bulletObject, spreadValue)
+        originalRaycast = hookFn(bullet._performRaycast, hookWrapper(function(bulletObject, spreadValue)
             local adjustedSpread = spreadValue
             if self.settings.noSpread then
                 if type(spreadValue) == "number" then
