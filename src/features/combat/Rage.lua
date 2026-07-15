@@ -621,10 +621,6 @@ function Rage:_bindWeaponRuntime(root)
 end
 
 function Rage:_installSilentAimHooks()
-    if self._silentAimInstalled then
-        return true
-    end
-
     if type(hookfunction) ~= "function" then
         self:_debugSilentAim("hookfunction is unavailable")
         return false
@@ -641,8 +637,6 @@ function Rage:_installSilentAimHooks()
     end
 
     self:_debugSilentAim("searching for equipped weapon")
-
-    local installed = false
 
     local function hookWeaponObject(weaponData)
         if type(weaponData) ~= "table" then
@@ -764,6 +758,8 @@ function Rage:_installSilentAimHooks()
             }
         end))
 
+        self._silentAimInstalled = true
+        self:_debugSilentAim("silent aim hook attached")
         return true
     end
 
@@ -775,9 +771,7 @@ function Rage:_installSilentAimHooks()
     end)
     if okCurrent and current then
         self:_debugSilentAim("found current equipped weapon")
-        if hookWeaponObject(current) then
-            installed = true
-        end
+        hookWeaponObject(current)
         if self.settings.instaEquip then
             local character = self.player and self.player.Character
             local tool = character and character:FindFirstChildWhichIsA("Tool")
@@ -792,10 +786,7 @@ function Rage:_installSilentAimHooks()
         self._silentAimBound = true
         self.cleaner:Give(self.errorHandler:Connect(equippedEvent, "Rage Inventory Equipped", function(_, equipped)
             self:_debugSilentAim("equipped weapon changed")
-            local hooked = hookWeaponObject(equipped)
-            if hooked then
-                installed = true
-            end
+            hookWeaponObject(equipped)
             if self.settings.instaEquip then
                 local character = self.player and self.player.Character
                 local tool = character and character:FindFirstChildWhichIsA("Tool")
@@ -804,11 +795,9 @@ function Rage:_installSilentAimHooks()
                 end
             end
         end))
-        installed = true
     end
 
-    self._silentAimInstalled = installed
-    return installed
+    return true
 end
 
 function Rage:Tick(dt)
