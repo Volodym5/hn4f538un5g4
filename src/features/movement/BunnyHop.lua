@@ -111,7 +111,7 @@ function BunnyHop.new(context)
     self.errorHandler = context.errorHandler
     self.enabled = false
 
-    self.cleaner:Give(self.errorHandler:Connect(self.services.RunService.Heartbeat, "BunnyHop Heartbeat", function()
+    function self:Tick()
         if not self.enabled then
             return
         end
@@ -127,13 +127,13 @@ function BunnyHop.new(context)
             return
         end
 
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        if self.services.UserInputService:IsKeyDown(Enum.KeyCode.Space) then
             local characterController = Modules["Controllers/CharacterController"]
             if characterController and characterController.jump then
                 characterController.jump()
             end
         end
-    end))
+    end
 
     return self
 end
