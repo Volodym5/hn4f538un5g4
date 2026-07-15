@@ -52,6 +52,7 @@ function Rage.new(context)
     self._weaponRuntimeRoots = setmetatable({}, { __mode = "k" })
     self._gunClientFunctions = {}
     self._gunClientScanClock = 0
+    self._silentAimDebugThrottle = 0
 
     self.settings = {
         rageMode = false,
@@ -146,6 +147,30 @@ end
 
 function Rage:_getAimCenter()
     return getCenter(self:_getCamera())
+end
+
+function Rage:_debugSilentAim(message)
+    if type(message) ~= "string" or message == "" then
+        return
+    end
+
+    local now = tick()
+    if (now - (self._silentAimDebugThrottle or 0)) < 0.5 then
+        return
+    end
+    self._silentAimDebugThrottle = now
+
+    print("[Bloxstrike SilentAim] " .. message)
+    pcall(function()
+        local starterGui = game:GetService("StarterGui")
+        if starterGui and starterGui.SetCore then
+            starterGui:SetCore("SendNotification", {
+                Title = "Silent Aim Debug",
+                Text = message,
+                Duration = 2,
+            })
+        end
+    end)
 end
 
 function Rage:_getTargetPart(model)
@@ -601,6 +626,7 @@ function Rage:_installSilentAimHooks()
     end
 
     if type(hookfunction) ~= "function" then
+        self:_debugSilentAim("hookfunction is unavailable")
         return false
     end
 
@@ -610,13 +636,17 @@ function Rage:_installSilentAimHooks()
 
     local controller = self.inventoryController
     if type(controller) ~= "table" then
+        self:_debugSilentAim("inventory controller not available")
         return false
     end
+
+    self:_debugSilentAim("searching for equipped weapon")
 
     local installed = false
 
     local function hookWeaponObject(weaponData)
         if type(weaponData) ~= "table" then
+            self:_debugSilentAim("weapon data is not a table")
             return false
         end
 
@@ -624,13 +654,16 @@ function Rage:_installSilentAimHooks()
             return weaponData.Bullet
         end)
         if not okBullet or type(bullet) ~= "table" then
+            self:_debugSilentAim("weapon has no Bullet table")
             return false
         end
         if type(bullet._performRaycast) ~= "function" then
+            self:_debugSilentAim("weapon has no _performRaycast function")
             return false
         end
         if self._silentAimHooks[weaponData] then
             self._silentAimInstalled = true
+            self:_debugSilentAim("weapon already hooked")
             return true
         end
 
@@ -663,6 +696,7 @@ function Rage:_installSilentAimHooks()
 
             local target = self:_getTargetData(self.settings.fovSize)
             if not target then
+                self:_debugSilentAim("no valid target found for silent aim")
                 return baseResult
             end
 
@@ -712,6 +746,7 @@ function Rage:_installSilentAimHooks()
             local hitInstance = raycast and raycast.Instance or target.part
             local hitMaterial = raycast and raycast.Material.Name or "Plastic"
             local hitNormal = raycast and raycast.Normal or Vector3.new(0, 1, 0)
+            self:_debugSilentAim("silent aim fired at " .. tostring(target.part and target.part.Name or "unknown"))
 
             return {
                 Origin = origin,
@@ -739,6 +774,7 @@ function Rage:_installSilentAimHooks()
         return nil
     end)
     if okCurrent and current then
+        self:_debugSilentAim("found current equipped weapon")
         if hookWeaponObject(current) then
             installed = true
         end
@@ -755,6 +791,7 @@ function Rage:_installSilentAimHooks()
     if equippedEvent and not self._silentAimBound then
         self._silentAimBound = true
         self.cleaner:Give(self.errorHandler:Connect(equippedEvent, "Rage Inventory Equipped", function(_, equipped)
+            self:_debugSilentAim("equipped weapon changed")
             local hooked = hookWeaponObject(equipped)
             if hooked then
                 installed = true
