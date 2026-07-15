@@ -316,6 +316,7 @@ local files = {
     "src/features/combat/Hitbox.lua",
     "src/features/combat/Rage.lua",
     "src/features/movement/BunnyHop.lua",
+    "src/features/movement/MovementSpeed.lua",
     "src/features/skins/Skinchanger.lua",
     "src/features/visuals/ESP.lua",
     "src/features/visuals/Chams.lua",
