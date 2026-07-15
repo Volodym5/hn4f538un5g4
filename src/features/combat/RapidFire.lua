@@ -22,7 +22,21 @@ function RapidFireSystem.new(context)
     self.workspace = self.context.Workspace
     self.ragebot = self.context.Ragebot
     self.lastFired = 0
+    self.enabled = false
+    self.tickInterval = tonumber(self.flags["RapidFireTick"]) or 0.05
+    self.flags["RageRapidFire"] = false
+    self.flags["RapidFireTick"] = self.tickInterval
     return self
+end
+
+function RapidFireSystem:SetEnabled(value)
+    self.enabled = value == true
+    self.flags["RageRapidFire"] = self.enabled
+end
+
+function RapidFireSystem:SetTick(value)
+    self.tickInterval = tonumber(value) or 0.05
+    self.flags["RapidFireTick"] = self.tickInterval
 end
 
 function RapidFireSystem:_getWeapon()
