@@ -138,6 +138,7 @@ local features = {
     hitbox = Hitbox.new(context),
     rage = Rage.new(context),
     bunnyHop = BunnyHop.new(context),
+    movementSpeed = MovementSpeed.new(context),
     esp = ESP.new(context),
     chams = Chams.new(context),
    -- bulletTracers = BulletTracers.new(context),
@@ -155,9 +156,12 @@ for _, feature in pairs(features) do
     end)
 end
 
-appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main BunnyHop Heartbeat", function()
+appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Movement Heartbeat", function()
     if features.bunnyHop and features.bunnyHop.Tick then
         features.bunnyHop:Tick()
+    end
+    if features.movementSpeed and features.movementSpeed.Tick then
+        features.movementSpeed:Tick()
     end
 end))
 
@@ -335,6 +339,12 @@ end))
 window:addSection("Movement")
 window:addToggle("Bunny Hop Enabled", false, safeUi("Bunny Hop Enabled", function(value)
     features.bunnyHop:SetEnabled(value)
+end))
+window:addToggle("Movement Speed Enabled", false, safeUi("Movement Speed Enabled", function(value)
+    features.movementSpeed:SetEnabled(value)
+end))
+window:addSlider("Movement Speed (st/s)", 5, 32, 15, 1, safeUi("Movement Speed (st/s)", function(value)
+    features.movementSpeed:SetSpeedValue(value)
 end))
 
 window:switchTab(skinsTab)
