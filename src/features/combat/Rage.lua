@@ -44,7 +44,7 @@ function Rage.new(context)
     self._rcsAccumulator = 0
     self._lastRapidClick = 0
     self._silentAimHooks = {}
-    self._silentAimAttempted = false
+    self._silentAimInstalled = false
     self._silentAimBound = false
     self._weaponDefaults = {}
     self._weaponModules = {}
@@ -596,13 +596,12 @@ function Rage:_bindWeaponRuntime(root)
 end
 
 function Rage:_installSilentAimHooks()
-    if self._silentAimAttempted then
-        return
+    if self._silentAimInstalled then
+        return true
     end
-    self._silentAimAttempted = true
 
     if type(hookfunction) ~= "function" then
-        return
+        return false
     end
 
     if not self.inventoryController then
@@ -611,25 +610,27 @@ function Rage:_installSilentAimHooks()
 
     local controller = self.inventoryController
     if type(controller) ~= "table" then
-        return
+        return false
     end
+
+    local installed = false
 
     local function hookWeaponObject(weaponData)
         if type(weaponData) ~= "table" then
-            return
+            return false
         end
 
         local okBullet, bullet = pcall(function()
             return weaponData.Bullet
         end)
         if not okBullet or type(bullet) ~= "table" then
-            return
+            return false
         end
         if type(bullet._performRaycast) ~= "function" then
-            return
+            return false
         end
         if self._silentAimHooks[weaponData] then
-            return
+            return true
         end
 
         self._silentAimHooks[weaponData] = true
@@ -686,8 +687,8 @@ function Rage:_installSilentAimHooks()
                     elseif type(bulletObject.Range) == "number" then
                         range = bulletObject.Range
                     end
-                    end
-                end)
+                end
+            end)
 
             local params = RaycastParams.new()
             params.IgnoreWater = false
@@ -727,7 +728,7 @@ function Rage:_installSilentAimHooks()
             }
         end))
 
-        return originalRaycast
+        return true
     end
 
     local okCurrent, current = pcall(function()
@@ -737,7 +738,9 @@ function Rage:_installSilentAimHooks()
         return nil
     end)
     if okCurrent and current then
-        hookWeaponObject(current)
+        if hookWeaponObject(current) then
+            installed = true
+        end
         if self.settings.instaEquip then
             local character = self.player and self.player.Character
             local tool = character and character:FindFirstChildWhichIsA("Tool")
@@ -760,9 +763,24 @@ function Rage:_installSilentAimHooks()
                 end
             end
         end))
+        installed = true
     end
 
-    return true
+    self._silentAimInstalled = installed
+    return installed
+end
+
+function Rage:Tick(dt)
+    if not self:_isActive() then
+        self:_updateFovCircles()
+        return
+    end
+
+    self:_updateFovCircles()
+    self:_updateAimlock(dt or 0.016)
+    self:_updateRcs(dt or 0.016)
+    self:_updateAutoClick()
+    self:_installSilentAimHooks()
 end
 
 function Rage:_updateAimlock(dt)
@@ -922,15 +940,7 @@ function Rage:_bind()
     end)
 
     self.cleaner:Give(self.errorHandler:Connect(self.services.RunService.RenderStepped, "Rage RenderStepped", function(dt)
-        if not self:_isActive() then
-            self:_updateFovCircles()
-            return
-        end
-
-        self:_updateFovCircles()
-        self:_updateAimlock(dt or 0.016)
-        self:_updateRcs(dt or 0.016)
-        self:_updateAutoClick()
+        self:Tick(dt or 0.016)
     end))
 
     self.cleaner:Give(self.errorHandler:Connect(self.services.UserInputService.InputBegan, "Rage InputBegan", function(input, processed)
@@ -962,6 +972,9 @@ end
 
 function Rage:SetSilentAim(value)
     self.settings.silentAim = value == true
+    if self.settings.silentAim then
+        self:_installSilentAimHooks()
+    end
 end
 
 function Rage:SetSilentAimToggleKey(value)
