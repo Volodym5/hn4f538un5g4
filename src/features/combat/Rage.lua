@@ -210,6 +210,38 @@ function Rage:_debugSilentAim(message)
     return
 end
 
+function Rage:_isLocalPlayerModel(model)
+    if not model then
+        return false
+    end
+
+    local player = self.player or (self.globals and self.globals:GetPlayer())
+    if not player then
+        return false
+    end
+
+    local character = player.Character
+    if not character then
+        return false
+    end
+
+    if model == character then
+        return true
+    end
+
+    if model:IsDescendantOf(character) then
+        return true
+    end
+
+    local modelHumanoid = model:FindFirstChildOfClass("Humanoid")
+    local characterHumanoid = character:FindFirstChildOfClass("Humanoid")
+    if modelHumanoid and characterHumanoid and modelHumanoid == characterHumanoid then
+        return true
+    end
+
+    return false
+end
+
 function Rage:_getTargetPart(model)
     if not model then
         return nil
@@ -307,6 +339,10 @@ function Rage:_getTargetData(maxFov)
     local characters = self.settings.teamCheck and self.globals:GetTargetModels(true) or self.globals:GetTargetModels(false)
 
     for _, model in ipairs(characters or {}) do
+        if self:_isLocalPlayerModel(model) then
+            continue
+        end
+
         local humanoid = model:FindFirstChildOfClass("Humanoid")
         if humanoid and humanoid.Health > 0 then
             local part = self:_getTargetPart(model)
