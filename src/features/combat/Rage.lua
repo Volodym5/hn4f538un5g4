@@ -630,6 +630,7 @@ function Rage:_installSilentAimHooks()
             return false
         end
         if self._silentAimHooks[weaponData] then
+            self._silentAimInstalled = true
             return true
         end
 
@@ -754,7 +755,10 @@ function Rage:_installSilentAimHooks()
     if equippedEvent and not self._silentAimBound then
         self._silentAimBound = true
         self.cleaner:Give(self.errorHandler:Connect(equippedEvent, "Rage Inventory Equipped", function(_, equipped)
-            hookWeaponObject(equipped)
+            local hooked = hookWeaponObject(equipped)
+            if hooked then
+                installed = true
+            end
             if self.settings.instaEquip then
                 local character = self.player and self.player.Character
                 local tool = character and character:FindFirstChildWhichIsA("Tool")
