@@ -154,6 +154,12 @@ for _, feature in pairs(features) do
     end)
 end
 
+appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main BunnyHop Heartbeat", function()
+    if features.bunnyHop and features.bunnyHop.Tick then
+        features.bunnyHop:Tick()
+    end
+end))
+
 local window = UILib.new("Bloxtrike", Enum.KeyCode.RightShift)
 window:setConfigFolder("Bloxtrike")
 window:onClose(errorHandler:Wrap("Window Close", function()
