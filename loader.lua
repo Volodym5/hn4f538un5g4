@@ -328,20 +328,89 @@ local files = {
 }
 
 
-local ok, result = xpcall(function()
+local MAX_CONCURRENT_FETCHES = 3
+
+local function fetchFilesInBatches(fileList, fetcher)
     local sources = {}
-    for index, relativePath in ipairs(files) do
+    local total = #fileList
+    local index = 1
+
+    local function validateBody(relativePath, body)
         local fileName = getFileName(relativePath)
-        loadingOverlay.setText(string.format("Fetching %s (%d/%d)...", fileName, index, #files))
-        local url = DEFAULT_BASE_URL .. "/" .. relativePath
-        local body = httpGet(url)
-        assert(type(body) == "string" and body ~= "", "Failed to fetch: " .. fileName)
+        if type(body) ~= "string" or body == "" then
+            return nil, "Failed to fetch: " .. fileName
+        end
+
         local lowered = body:sub(1, 256):lower()
-        assert(not lowered:find("<!doctype html>", 1, true), "Non-raw response for: " .. fileName)
-        assert(not lowered:find("<html", 1, true), "HTML returned for: " .. fileName)
-        assert(body ~= "404: Not Found", "Missing file: " .. fileName)
-        sources[relativePath] = body
+        if lowered:find("<!doctype html>", 1, true) then
+            return nil, "Non-raw response for: " .. fileName
+        end
+
+        if lowered:find("<html", 1, true) then
+            return nil, "HTML returned for: " .. fileName
+        end
+
+        if body == "404: Not Found" then
+            return nil, "Missing file: " .. fileName
+        end
+
+        return body
     end
+
+    while index <= total do
+        local batch = {}
+        local batchSize = 0
+
+        while index <= total and batchSize < MAX_CONCURRENT_FETCHES do
+            batchSize = batchSize + 1
+            batch[batchSize] = fileList[index]
+            index = index + 1
+        end
+
+        local pending = #batch
+        local completed = 0
+        local batchErrors = {}
+
+        for batchIndex, relativePath in ipairs(batch) do
+            local fileName = getFileName(relativePath)
+            local url = DEFAULT_BASE_URL .. "/" .. relativePath
+
+            task.spawn(function()
+                local okFetch, body = pcall(function()
+                    return fetcher(url)
+                end)
+
+                if not okFetch then
+                    batchErrors[relativePath] = "Failed to fetch: " .. fileName
+                else
+                    local validatedBody, err = validateBody(relativePath, body)
+                    if validatedBody then
+                        sources[relativePath] = validatedBody
+                    else
+                        batchErrors[relativePath] = err
+                    end
+                end
+
+                completed = completed + 1
+            end)
+        end
+
+        while completed < pending do
+            task.wait(0)
+        end
+
+        for _, relativePath in ipairs(batch) do
+            if batchErrors[relativePath] then
+                error(batchErrors[relativePath], 0)
+            end
+        end
+    end
+
+    return sources
+end
+
+local ok, result = xpcall(function()
+    local sources = fetchFilesInBatches(files, httpGet)
 
     loadingOverlay.dismiss()
 
