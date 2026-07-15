@@ -1,7 +1,25 @@
 if not LPH_OBFUSCATED then
+	LPH_JIT = function(...) return ... end
+	LPH_JIT_MAX = function(...) return ... end
 	LPH_NO_VIRTUALIZE = function(...) return ... end
+	LPH_NO_UPVALUES = function(f) return (function(...) return f(...) end) end
+	LPH_ENCSTR = function(...) return ... end
+	LPH_ENCNUM = function(...) return ... end
+	LPH_ENCFUNC = function(func, key1, key2)
+		if key1 ~= key2 then return print("LPH_ENCFUNC mismatch") end
+		return func
+	end
 	LPH_CRASH = function() return print(debug.traceback()) end
 end
+
+local GetGenv = (getgenv and clonefunction(getgenv) or DOKASFPOAKA)
+GetGenv().DOKASFPOAKA = GetGenv
+local HookFunction = (hookfunction and clonefunction(hookfunction) or DOKASFPOAKA22)
+GetGenv().DOKASFPOAKA22 = HookFunction
+GetGenv().hookfunction = nil
+GetGenv().getgenv = nil
+GetGenv().raven = {}
+GetGenv().raven.loaded = false
 
 local StartTick = tick()
 
@@ -60,14 +78,39 @@ local Modules = LPH_NO_VIRTUALIZE(function()
     for Index, Value in getloadedmodules() do
         local Ok, Module = pcall(require, Value)
         if Ok and typeof(Module) == "table" and Module then
+
+            if Module.getWeaponKickRotation and Module.weaponKick then
+                Modules["Controllers/CameraController"] = Module
+                continue
+            end
         
             if Module.getCurrentEquipped then
                 Modules["InventoryController"] = Module
                 continue
             end
 
+            if Module.cast and Module.castThrough then
+                Modules["Raycast"] = Module
+                continue
+            end
+
+            if rawget(Module, "shoot") and rawget(Module, "setupRecoil") then
+                Modules["WeaponController"] = Module
+                continue
+            end
+
             if Module.jump then
                 Modules["Controllers/CharacterController"] = Module
+                continue
+            end
+
+            if Module.getMovementVelocity then
+                Modules["Viewmodel/Bobble"] = Module
+                continue
+            end
+
+            if Module.TakeStamina then
+                Modules["Classes/Character"] = Module
                 continue
             end
 
@@ -95,8 +138,7 @@ for Index, Value in ReplicatedStorage.Database.Custom.Weapons:GetChildren() do
     end
 end
 
--- Bunnyhop execution is handled by the module below and is controlled by its enabled state.
-
+-- Standalone bunnyhop logic adapted to be toggleable through the main framework.
 ----------------------------------------------
 
 local BunnyHop = {}
