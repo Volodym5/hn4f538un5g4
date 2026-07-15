@@ -40,15 +40,17 @@ function MovementSpeed.new(context)
     self.globals = context.globals
     self.cleaner = context.Cleaner.new()
     self.errorHandler = context.errorHandler
-    self.enabled = false
-    self.speedValue = 50
-    self.autoJump = false
-    self.infiniteStamina = false
+    self.settings = {
+        enabled = false,
+        speedValue = 15,
+        autoJump = false,
+        infiniteStamina = false,
+    }
     return self
 end
 
 function MovementSpeed:Tick()
-    if not self.enabled then
+    if not self.settings.enabled then
         return
     end
 
@@ -78,15 +80,15 @@ function MovementSpeed:Tick()
     local oldVelocity = root.AssemblyLinearVelocity
     if moveDirection.Magnitude > 0 then
         root.AssemblyLinearVelocity = Vector3.new(
-            moveDirection.Unit.X * self.speedValue,
+            moveDirection.Unit.X * self.settings.speedValue,
             oldVelocity.Y,
-            moveDirection.Unit.Z * self.speedValue
+            moveDirection.Unit.Z * self.settings.speedValue
         )
     else
         root.AssemblyLinearVelocity = Vector3.new(oldVelocity.X * 0.75, oldVelocity.Y, oldVelocity.Z * 0.75)
     end
 
-    if self.autoJump and input:IsKeyDown(Enum.KeyCode.Space) then
+    if self.settings.autoJump and input:IsKeyDown(Enum.KeyCode.Space) then
         local controller = Modules["Controllers/CharacterController"]
         if controller and controller.jump then
             controller.jump()
@@ -95,19 +97,22 @@ function MovementSpeed:Tick()
 end
 
 function MovementSpeed:SetEnabled(value)
-    self.enabled = value == true
+    self.settings.enabled = value == true
 end
 
 function MovementSpeed:SetSpeedValue(value)
-    self.speedValue = tonumber(value) or self.speedValue
+    local parsed = tonumber(value)
+    if parsed then
+        self.settings.speedValue = math.min(parsed, 32)
+    end
 end
 
 function MovementSpeed:SetAutoJump(value)
-    self.autoJump = value == true
+    self.settings.autoJump = value == true
 end
 
 function MovementSpeed:SetInfiniteStamina(value)
-    self.infiniteStamina = value == true
+    self.settings.infiniteStamina = value == true
 end
 
 function MovementSpeed:Destroy()
