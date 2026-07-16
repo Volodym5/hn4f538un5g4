@@ -39,6 +39,14 @@ function RapidFireSystem:SetTick(value)
     self.flags["RapidFireTick"] = self.tickInterval
 end
 
+-- 🔧 NEW: force rapid fire on manual shooting
+function RapidFireSystem:ApplyRapidFire(weapon)
+    if not weapon or not weapon.Properties then return end
+    if self.flags["RageRapidFire"] then
+        weapon.Properties.FireRate = tonumber(self.flags["RapidFireTick"]) or 0.05
+    end
+end
+
 function RapidFireSystem:_getWeapon()
     local inventoryController = safeGet(self.modules, "InventoryController")
     if not inventoryController then
@@ -46,7 +54,9 @@ function RapidFireSystem:_getWeapon()
     end
 
     if type(inventoryController.getCurrentEquipped) == "function" then
-        return inventoryController.getCurrentEquipped()
+        local weapon = inventoryController.getCurrentEquipped()
+        self:ApplyRapidFire(weapon) -- ✅ apply rapid fire globally
+        return weapon
     end
 
     return nil
@@ -56,11 +66,9 @@ function RapidFireSystem:_getFireRate(properties)
     if self.flags["RageRapidFire"] then
         return tonumber(self.flags["RapidFireTick"]) or 0.05
     end
-
     if properties and properties.FireRate then
         return tonumber(properties.FireRate) or 0.1
     end
-
     return 0.1
 end
 
