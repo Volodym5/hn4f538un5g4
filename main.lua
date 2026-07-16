@@ -107,7 +107,7 @@ local Aimbot = loadLocal("src/features/combat/Aimbot.lua")
 local TriggerBot = loadLocal("src/features/combat/TriggerBot.lua")
 local Hitbox = loadLocal("src/features/combat/Hitbox.lua")
 local Rage = loadLocal("src/features/combat/Rage.lua")
-local RapidFire = loadLocal("src/features/combat/RapidFire.lua")
+--local RapidFire = loadLocal("src/features/combat/RapidFire.lua")
 local BunnyHop = loadLocal("src/features/movement/BunnyHop.lua")
 local MovementSpeed = loadLocal("src/features/movement/MovementSpeed.lua")
 local ESP = loadLocal("src/features/visuals/ESP.lua")
@@ -138,7 +138,7 @@ local features = {
     triggerBot = TriggerBot.new(context),
     hitbox = Hitbox.new(context),
     rage = Rage.new(context),
-    rapidFire = RapidFire.new(context),
+    --rapidFire = RapidFire.new(context),
     bunnyHop = BunnyHop.new(context),
     movementSpeed = MovementSpeed.new(context),
     esp = ESP.new(context),
@@ -310,12 +310,14 @@ window:addToggle("TeamCheck", true, safeUi("TeamCheck", function(value)
     features.rage:SetTeamCheck(value)
 end))
 window:addSection("Weapon Mods")
+--[[
 window:addToggle("Rapid Fire", false, safeUi("Rapid Fire", function(value)
     features.rapidFire:SetEnabled(value)
 end))
 window:addSlider("Rapid Fire Tick (s)", 0.01, 0.2, 0.05, 0.01, safeUi("Rapid Fire Tick", function(value)
     features.rapidFire:SetTick(value)
 end))
+]]
 window:addToggle("Memory No Recoil", false, safeUi("Memory No Recoil", function(value)
     features.rage:SetMemoryNoRecoil(value)
 end))
