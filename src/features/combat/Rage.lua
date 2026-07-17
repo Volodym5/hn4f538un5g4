@@ -110,6 +110,8 @@ function Rage.new(context)
     self._gunClientFunctions = {}
     self._gunClientScanClock = 0
     self._silentAimDebugThrottle = 0
+    self._cachedExcludeList = {}
+    self._lastExcludeUpdate = 0
 
     self.settings = {
         rageMode = false,
@@ -220,23 +222,28 @@ function Rage:_isLocalPlayerModel(model)
         return false
     end
 
+    -- Check if the model or any of its ancestors has the player's name
+    local current = model
+    while current do
+        if current.Name == player.Name then
+            return true
+        end
+        current = current.Parent
+    end
+
+    -- Also check if it's the actual Character property
+    if model == player.Character then
+        return true
+    end
+
+    -- Check Humanoid as fallback
     local character = player.Character
-    if not character then
-        return false
-    end
-
-    if model == character then
-        return true
-    end
-
-    if model:IsDescendantOf(character) then
-        return true
-    end
-
-    local modelHumanoid = model:FindFirstChildOfClass("Humanoid")
-    local characterHumanoid = character:FindFirstChildOfClass("Humanoid")
-    if modelHumanoid and characterHumanoid and modelHumanoid == characterHumanoid then
-        return true
+    if character then
+        local modelHumanoid = model:FindFirstChildOfClass("Humanoid")
+        local characterHumanoid = character:FindFirstChildOfClass("Humanoid")
+        if modelHumanoid and characterHumanoid and modelHumanoid == characterHumanoid then
+            return true
+        end
     end
 
     return false
@@ -271,32 +278,7 @@ function Rage:_isTargetVisible(part, model)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
 
-    local ignore = { camera }
-    local character = self.player and self.player.Character
-    if character then
-        ignore[#ignore + 1] = character
-    end
-
-    local charactersFolder = self.workspace:FindFirstChild("Characters")
-    if charactersFolder then
-        for _, teamFolder in ipairs(charactersFolder:GetChildren()) do
-            for _, child in ipairs(teamFolder:GetChildren()) do
-                if child ~= model and child ~= character then
-                    ignore[#ignore + 1] = child
-                end
-            end
-        end
-    end
-
-    local debris = self.workspace:FindFirstChild("Debris")
-    if debris then
-        ignore[#ignore + 1] = debris
-    end
-
-    local visualizers = self.workspace:FindFirstChild("RaycastVisualizers")
-    if visualizers then
-        ignore[#ignore + 1] = visualizers
-    end
+    local ignore = self:_buildExcludeList(camera)
 
     local attempts = 0
     while attempts < 15 do
@@ -327,6 +309,95 @@ function Rage:_isTargetVisible(part, model)
     return false
 end
 
+function Rage:_buildExcludeList(camera)
+    local now = tick()
+    -- Cache exclude list for 0.5 seconds to improve performance
+    if self._lastExcludeUpdate and (now - self._lastExcludeUpdate) < 0.5 and #self._cachedExcludeList > 0 then
+        return self._cachedExcludeList
+    end
+
+    local ignore = {}
+    local player = self.player or (self.globals and self.globals:GetPlayer())
+    
+    -- Add camera
+    if camera then
+        ignore[#ignore + 1] = camera
+    end
+
+    -- Exclude local player character and all its parts
+    if player then
+        local character = player.Character
+        if character then
+            ignore[#ignore + 1] = character
+            for _, descendant in ipairs(character:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    ignore[#ignore + 1] = descendant
+                end
+            end
+            -- Exclude tools held by local player
+            for _, tool in ipairs(character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    ignore[#ignore + 1] = tool
+                    for _, descendant in ipairs(tool:GetDescendants()) do
+                        if descendant:IsA("BasePart") then
+                            ignore[#ignore + 1] = descendant
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Search for player character in Characters folder
+        local charactersFolder = self.workspace:FindFirstChild("Characters")
+        if charactersFolder then
+            for _, teamFolder in ipairs(charactersFolder:GetChildren()) do
+                local playerModel = teamFolder:FindFirstChild(player.Name)
+                if playerModel then
+                    ignore[#ignore + 1] = playerModel
+                    for _, descendant in ipairs(playerModel:GetDescendants()) do
+                        if descendant:IsA("BasePart") then
+                            ignore[#ignore + 1] = descendant
+                        end
+                    end
+                    break
+                end
+            end
+        end
+    end
+
+    -- Exclude all non-collidable and special folders
+    local function excludeFolder(folderName)
+        local folder = self.workspace:FindFirstChild(folderName)
+        if folder then
+            ignore[#ignore + 1] = folder
+            for _, child in ipairs(folder:GetDescendants()) do
+                if child:IsA("BasePart") then
+                    ignore[#ignore + 1] = child
+                end
+            end
+        end
+    end
+
+    excludeFolder("Camera")
+    excludeFolder("Debris")
+    excludeFolder("Effects")
+    excludeFolder("Ignore")
+    excludeFolder("Hitboxes")
+    excludeFolder("RaycastVisualizers")
+
+    -- Add all non-collidable parts in workspace
+    for _, obj in ipairs(self.workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not obj.CanCollide then
+            ignore[#ignore + 1] = obj
+        end
+    end
+
+    self._cachedExcludeList = ignore
+    self._lastExcludeUpdate = now
+    
+    return ignore
+end
+
 function Rage:_getTargetData(maxFov)
     local camera = self:_getCamera()
     local center = self:_getAimCenter()
@@ -335,7 +406,8 @@ function Rage:_getTargetData(maxFov)
     end
 
     local best = nil
-    local bestScore = tonumber(maxFov) or self.settings.aimlockFov or 150
+    local bestScore = math.huge
+    local maxFovRadius = tonumber(maxFov) or self.settings.aimlockFov or 150
     local characters = self.settings.teamCheck and self.globals:GetTargetModels(true) or self.globals:GetTargetModels(false)
 
     for _, model in ipairs(characters or {}) do
@@ -348,20 +420,37 @@ function Rage:_getTargetData(maxFov)
             local part = self:_getTargetPart(model)
             if part then
                 local worldPos, onScreen = camera:WorldToViewportPoint(part.Position)
-                if self.settings.fullFov360 or onScreen then
-                    local score = self.settings.fullFov360
-                        and (part.Position - camera.CFrame.Position).Magnitude
-                        or (Vector2.new(worldPos.X, worldPos.Y) - center).Magnitude
-
-                    if score <= bestScore and self:_isTargetVisible(part, model) then
-                        best = {
-                            model = model,
-                            part = part,
-                            pos = part.Position,
-                            score = score,
-                        }
-                        bestScore = score
-                    end
+                
+                -- Calculate distance from center (FOV check)
+                local screenDist = self.settings.fullFov360 
+                    and 0  -- Always within FOV if 360 mode
+                    or (onScreen and (Vector2.new(worldPos.X, worldPos.Y) - center).Magnitude or math.huge)
+                
+                -- Skip targets outside FOV
+                if screenDist > maxFovRadius then
+                    continue
+                end
+                
+                -- Check visibility
+                if not self:_isTargetVisible(part, model) then
+                    continue
+                end
+                
+                -- Calculate actual 3D distance (prioritize closest threat)
+                local actualDistance = (part.Position - camera.CFrame.Position).Magnitude
+                
+                -- Smart scoring: prioritize closer targets that are also near crosshair
+                local score = actualDistance * (1 + screenDist / maxFovRadius * 2)
+                
+                if score < bestScore then
+                    best = {
+                        model = model,
+                        part = part,
+                        pos = part.Position,
+                        score = screenDist,
+                        distance = actualDistance,
+                    }
+                    bestScore = score
                 end
             end
         end
@@ -784,27 +873,41 @@ function Rage:_installSilentAimHooks()
                 end
             end)
 
+            -- Build comprehensive exclude list
             local params = RaycastParams.new()
             params.IgnoreWater = false
-            if self.settings.wallbang then
-                params.FilterType = Enum.RaycastFilterType.Include
-            else
-                params.FilterType = Enum.RaycastFilterType.Exclude
-            end
-
-            local filter = { camera }
-            local character = self.player and self.player.Character
-            if character then
-                filter[#filter + 1] = character
-            end
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            
+            local filter = self:_buildExcludeList(camera)
             params.FilterDescendantsInstances = filter
 
             local distance = (target.pos - origin).Magnitude
             local raycast = self.workspace:Raycast(origin, direction * math.max(range, distance + 10), params)
-            local hitPos = raycast and raycast.Position or target.pos
-            local hitInstance = raycast and raycast.Instance or target.part
-            local hitMaterial = raycast and raycast.Material.Name or "Plastic"
-            local hitNormal = raycast and raycast.Normal or Vector3.new(0, 1, 0)
+            
+            local hitPos, hitInstance, hitMaterial, hitNormal
+            
+            if raycast then
+                local hitModel = raycast.Instance:FindFirstAncestorOfClass("Model")
+                if hitModel == target.model or raycast.Instance:IsDescendantOf(target.model) then
+                    -- We hit the intended target
+                    hitPos = raycast.Position
+                    hitInstance = raycast.Instance
+                    hitMaterial = raycast.Material.Name
+                    hitNormal = raycast.Normal
+                else
+                    -- We hit something else (wall, etc.) - try to force hit the target
+                    hitPos = target.part.Position
+                    hitInstance = target.part
+                    hitMaterial = "Plastic"
+                    hitNormal = (origin - hitPos).Unit
+                end
+            else
+                -- No hit at all, use target position
+                hitPos = target.part.Position
+                hitInstance = target.part
+                hitMaterial = "Plastic"
+                hitNormal = (origin - hitPos).Unit
+            end
 
             return {
                 Origin = origin,
