@@ -249,6 +249,25 @@ function Rage:_isLocalPlayerModel(model)
     return false
 end
 
+function Rage:_isSpawnProtected(model)
+    if not model then
+        return true
+    end
+    
+    -- Check for Invincible attribute on the character model
+    if model:GetAttribute("Invincible") == true then
+        return true
+    end
+    
+    -- Check humanoid health
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health <= 0 then
+        return true
+    end
+    
+    return false
+end
+
 function Rage:_getTargetPart(model)
     if not model then
         return nil
@@ -412,6 +431,11 @@ function Rage:_getTargetData(maxFov)
 
     for _, model in ipairs(characters or {}) do
         if self:_isLocalPlayerModel(model) then
+            continue
+        end
+        
+        -- Skip spawn protected players
+        if self:_isSpawnProtected(model) then
             continue
         end
 
