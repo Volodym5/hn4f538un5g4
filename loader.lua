@@ -328,7 +328,7 @@ local files = {
 }
 
 
-local MAX_CONCURRENT_FETCHES = 3
+local MAX_CONCURRENT_FETCHES = 4
 
 local function fetchFilesInBatches(fileList, fetcher)
     local sources = {}
