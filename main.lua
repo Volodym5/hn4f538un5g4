@@ -1,22 +1,41 @@
 -- Load the UI library
-local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/ui_lib.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/ui_lib.lua"))()
 
 local baseUrl = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
+
+-- Setup HTTP get function (same as original)
+local httpGet = (syn and syn.request and function(url)
+    local response = syn.request({ Url = url, Method = "GET" })
+    return response and response.Body
+end) or (http and http.request and function(url)
+    local response = http.request({ Url = url, Method = "GET" })
+    return response and response.Body
+end) or (game and game.HttpGet and function(url)
+    return game:HttpGet(url)
+end) or error("No HTTP request function is available in this executor.")
 
 -- Function to load modules from GitHub
 local function loadModule(relativePath)
     local url = baseUrl .. "/" .. relativePath
-    local source = game:HttpGet(url)
-    local chunk = loadstring(source, "@" .. relativePath)
+    print("Loading: " .. url)
+    local source = httpGet(url)
+    if not source or source == "" then
+        error("Failed to load: " .. url)
+    end
+    local chunk, err = loadstring(source, "@" .. relativePath)
+    if not chunk then
+        error("Failed to compile: " .. relativePath .. " - " .. tostring(err))
+    end
     return chunk()
 end
 
--- Load all feature modules
+-- Load all shared modules
 local Cleaner = loadModule("src/shared/Cleaner.lua")
 local Services = loadModule("src/shared/Services.lua")
 local ErrorHandler = loadModule("src/shared/ErrorHandler.lua")
 local GlobalsFactory = loadModule("src/shared/Globals.lua")
 
+-- Load all feature modules
 local Aimbot = loadModule("src/features/combat/Aimbot.lua")
 local TriggerBot = loadModule("src/features/combat/TriggerBot.lua")
 local Hitbox = loadModule("src/features/combat/Hitbox.lua")
@@ -31,6 +50,8 @@ local Chams = loadModule("src/features/visuals/Chams.lua")
 local KillEffects = loadModule("src/features/visuals/KillEffects.lua")
 local WorldEffects = loadModule("src/features/visuals/WorldEffects.lua")
 local Skinchanger = loadModule("src/features/skins/Skinchanger.lua")
+
+print("All modules loaded successfully")
 
 local globals = GlobalsFactory(Services)
 local errorHandler = ErrorHandler.new(Services)
@@ -619,7 +640,7 @@ SkinChangerLeft:AddToggle("KnifeChangerEnabled", {
 })
 
 local knifeModels = features.skinchanger:GetKnifeModels()
-local knifeModelDropdown = SkinChangerLeft:AddDropdown("KnifeModel", {
+SkinChangerLeft:AddDropdown("KnifeModel", {
     Text = "Knife Model",
     Default = features.skinchanger:GetKnifeModel(),
     Values = knifeModels,
@@ -1020,121 +1041,6 @@ ChamsLeft:AddLabel("Weapon Chams Color"):AddColorPicker("WeaponChamsColor", {
         features.chams:SetSetting("weaponColor", value)
     end),
 })
-
---[[
--- Bullet Tracers Section
-local BulletTracersRight = VisualsTab:AddRightGroupbox("Bullet Tracers")
-
-BulletTracersRight:AddToggle("BulletTracersEnabled", {
-    Text = "Bullet Tracers Enabled",
-    Default = false,
-    Callback = safeUi("Bullet Tracers Enabled", function(value)
-        features.bulletTracers:SetSetting("enabled", value)
-    end),
-})
-
-BulletTracersRight:AddDropdown("BulletTracerPattern", {
-    Text = "Bullet Tracer Pattern",
-    Default = "Straight",
-    Values = { "Straight", "Wave", "Spiral", "Dashed" },
-    Callback = safeUi("Bullet Tracer Pattern", function(value)
-        features.bulletTracers:SetSetting("pattern", value)
-    end),
-})
-
-BulletTracersRight:AddSlider("BulletTracerTransparency", {
-    Text = "Bullet Tracer Transparency",
-    Default = 0.3,
-    Min = 0,
-    Max = 1,
-    Rounding = 2,
-    Callback = safeUi("Bullet Tracer Transparency", function(value)
-        features.bulletTracers:SetSetting("transparency", value)
-    end),
-})
-
-BulletTracersRight:AddSlider("BulletTracerDuration", {
-    Text = "Bullet Tracer Duration",
-    Default = 0.6,
-    Min = 0.1,
-    Max = 2,
-    Rounding = 1,
-    Suffix = "s",
-    Callback = safeUi("Bullet Tracer Duration", function(value)
-        features.bulletTracers:SetSetting("duration", value)
-    end),
-})
-
-BulletTracersRight:AddSlider("BulletTracerThickness", {
-    Text = "Bullet Tracer Thickness",
-    Default = 0.2,
-    Min = 0.1,
-    Max = 1,
-    Rounding = 2,
-    Callback = safeUi("Bullet Tracer Thickness", function(value)
-        features.bulletTracers:SetSetting("thickness", value)
-    end),
-})
-
-BulletTracersRight:AddLabel("Bullet Tracer Color"):AddColorPicker("BulletTracerColor", {
-    Default = Color3.fromRGB(0, 255, 255),
-    Callback = safeUi("Bullet Tracer Color", function(value)
-        features.bulletTracers:SetSetting("color", value)
-    end),
-})
-]]
-
---[[
--- Particle Effects Section
-local ParticleEffectsRight = VisualsTab:AddRightGroupbox("Particle Effects")
-
-ParticleEffectsRight:AddToggle("ParticleEffectsEnabled", {
-    Text = "Particle Effects Enabled",
-    Default = false,
-    Callback = safeUi("Particle Effects Enabled", function(value)
-        features.particleEffects:SetSetting("enabled", value)
-    end),
-})
-
-ParticleEffectsRight:AddSlider("ParticleAmount", {
-    Text = "Particle Amount",
-    Default = 25,
-    Min = 5,
-    Max = 80,
-    Rounding = 0,
-    Callback = safeUi("Particle Amount", function(value)
-        features.particleEffects:SetSetting("amount", value)
-    end),
-})
-
-ParticleEffectsRight:AddSlider("ParticleLifetime", {
-    Text = "Particle Lifetime",
-    Default = 1.2,
-    Min = 0.3,
-    Max = 3,
-    Rounding = 1,
-    Suffix = "s",
-    Callback = safeUi("Particle Lifetime", function(value)
-        features.particleEffects:SetSetting("lifetime", value)
-    end),
-})
-
-ParticleEffectsRight:AddDropdown("ParticleStyle", {
-    Text = "Particle Style",
-    Default = "Spark",
-    Values = { "Spark", "Smoke", "Fire", "Explosion", "Magic" },
-    Callback = safeUi("Particle Style", function(value)
-        features.particleEffects:SetSetting("style", value)
-    end),
-})
-
-ParticleEffectsRight:AddLabel("Particle Color"):AddColorPicker("ParticleColor", {
-    Default = Color3.fromRGB(255, 100, 0),
-    Callback = safeUi("Particle Color", function(value)
-        features.particleEffects:SetSetting("color", value)
-    end),
-})
-]]
 
 -- Kill Effects Section
 local KillEffectsRight = VisualsTab:AddRightGroupbox("Kill Effects")
