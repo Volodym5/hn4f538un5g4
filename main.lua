@@ -1,121 +1,36 @@
-local bootstrap = ...
-if type(bootstrap) ~= "table" then
-    bootstrap = {}
+-- Load the UI library
+local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/ui_lib.lua"))()
+
+local baseUrl = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
+
+-- Function to load modules from GitHub
+local function loadModule(relativePath)
+    local url = baseUrl .. "/" .. relativePath
+    local source = game:HttpGet(url)
+    local chunk = loadstring(source, "@" .. relativePath)
+    return chunk()
 end
 
-local function normalizePath(path)
-    return tostring(path or ""):gsub("\\", "/")
-end
+-- Load all feature modules
+local Cleaner = loadModule("src/shared/Cleaner.lua")
+local Services = loadModule("src/shared/Services.lua")
+local ErrorHandler = loadModule("src/shared/ErrorHandler.lua")
+local GlobalsFactory = loadModule("src/shared/Globals.lua")
 
-local function joinPath(...)
-    local parts = { ... }
-    local out = {}
-
-    for _, part in ipairs(parts) do
-        local text = normalizePath(part):gsub("^/+", ""):gsub("/+$", "")
-        if text ~= "" then
-            out[#out + 1] = text
-        end
-    end
-
-    return table.concat(out, "/")
-end
-
-local function getRootPath()
-    local source = debug.info and debug.info(1, "s")
-    if type(source) == "string" and source ~= "" then
-        source = normalizePath(source):gsub("^@", "")
-        return source:match("^(.*)/[^/]+$") or "."
-    end
-
-    return "."
-end
-
-local ROOT = getRootPath()
-local moduleCache = {}
-local httpGet = (syn and syn.request and function(url)
-    local response = syn.request({ Url = url, Method = "GET" })
-    return response and response.Body
-end) or (http and http.request and function(url)
-    local response = http.request({ Url = url, Method = "GET" })
-    return response and response.Body
-end)
-
-if not httpGet and game and game.HttpGet then
-    httpGet = function(url)
-        return game:HttpGet(url)
-    end
-end
-
-local function loadLocal(relativePath)
-    local preloadedSources = bootstrap.moduleSources
-    local baseUrl = bootstrap.baseUrl
-    local cacheKey = relativePath
-
-    if moduleCache[cacheKey] ~= nil then
-        return moduleCache[cacheKey]
-    end
-
-    local chunk, err = nil, nil
-    local source = nil
-
-    if type(preloadedSources) == "table" and type(preloadedSources[relativePath]) == "string" then
-        source = preloadedSources[relativePath]
-        if loadstring then
-            chunk, err = loadstring(source, "@" .. relativePath)
-        end
-    end
-
-    if not chunk and type(baseUrl) == "string" and baseUrl ~= "" and httpGet then
-        local url = joinPath(baseUrl, relativePath)
-        local ok, body = pcall(httpGet, url)
-        if ok and type(body) == "string" and body ~= "" then
-            source = body
-            if loadstring then
-                chunk, err = loadstring(source, "@" .. url)
-            end
-        end
-    end
-
-    if not chunk and loadfile then
-        local path = joinPath(ROOT, relativePath)
-        chunk, err = loadfile(path)
-    end
-
-    if not chunk and readfile and loadstring then
-        local path = joinPath(ROOT, relativePath)
-        local ok, contents = pcall(readfile, path)
-        if ok and contents then
-            chunk, err = loadstring(contents, "@" .. path)
-        end
-    end
-
-    assert(chunk, err or ("Failed to load module: " .. tostring(relativePath)))
-
-    local result = chunk()
-    moduleCache[cacheKey] = result
-    return result
-end
-
-local Cleaner = loadLocal("src/shared/Cleaner.lua")
-local Services = loadLocal("src/shared/Services.lua")
-local ErrorHandler = loadLocal("src/shared/ErrorHandler.lua")
-local GlobalsFactory = loadLocal("src/shared/Globals.lua")
-
-local Aimbot = loadLocal("src/features/combat/Aimbot.lua")
-local TriggerBot = loadLocal("src/features/combat/TriggerBot.lua")
-local Hitbox = loadLocal("src/features/combat/Hitbox.lua")
-local Rage = loadLocal("src/features/combat/Rage.lua")
---local RapidFire = loadLocal("src/features/combat/RapidFire.lua")
-local BunnyHop = loadLocal("src/features/movement/BunnyHop.lua")
-local MovementSpeed = loadLocal("src/features/movement/MovementSpeed.lua")
-local ESP = loadLocal("src/features/visuals/ESP.lua")
-local Chams = loadLocal("src/features/visuals/Chams.lua")
---local BulletTracers = loadLocal("src/features/visuals/BulletTracers.lua")
---local ParticleEffects = loadLocal("src/features/visuals/ParticleEffects.lua")
-local KillEffects = loadLocal("src/features/visuals/KillEffects.lua")
-local WorldEffects = loadLocal("src/features/visuals/WorldEffects.lua")
-local Skinchanger = loadLocal("src/features/skins/Skinchanger.lua")
+local Aimbot = loadModule("src/features/combat/Aimbot.lua")
+local TriggerBot = loadModule("src/features/combat/TriggerBot.lua")
+local Hitbox = loadModule("src/features/combat/Hitbox.lua")
+local Rage = loadModule("src/features/combat/Rage.lua")
+--local RapidFire = loadModule("src/features/combat/RapidFire.lua")
+local BunnyHop = loadModule("src/features/movement/BunnyHop.lua")
+local MovementSpeed = loadModule("src/features/movement/MovementSpeed.lua")
+local ESP = loadModule("src/features/visuals/ESP.lua")
+local Chams = loadModule("src/features/visuals/Chams.lua")
+--local BulletTracers = loadModule("src/features/visuals/BulletTracers.lua")
+--local ParticleEffects = loadModule("src/features/visuals/ParticleEffects.lua")
+local KillEffects = loadModule("src/features/visuals/KillEffects.lua")
+local WorldEffects = loadModule("src/features/visuals/WorldEffects.lua")
+local Skinchanger = loadModule("src/features/skins/Skinchanger.lua")
 
 local globals = GlobalsFactory(Services)
 local errorHandler = ErrorHandler.new(Services)
@@ -166,7 +81,7 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
--- Use the new UI library (already loaded by bootstrapper)
+-- Use the new UI library (loaded from ui_lib.lua)
 local Library = getgenv().Library
 local SaveManager = Library.SaveManager
 
@@ -1283,8 +1198,3 @@ WorldEffectsRight:AddToggle("AntiSmoke", {
 
 -- Notification
 Library:Notify("Bloxtrike loaded.", 3)
-
-return {
-    window = Window,
-    features = features,
-}
