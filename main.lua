@@ -167,7 +167,7 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
--- Use the new UI library
+-- Use the new UI library instead of UILib
 local Library = getgenv().Library
 local SaveManager = Library.SaveManager
 
@@ -1286,7 +1286,41 @@ WorldEffectsRight:AddToggle("AntiSmoke", {
     end),
 })
 
--- Notification
+-- Config auto-load functionality
+-- The Settings tab is built-in, so no need for a separate Config tab
+
+task.defer(function()
+    local configs = Library.SaveManager:GetConfigs()
+    if type(configs) ~= "table" or #configs == 0 then
+        return
+    end
+
+    local selectedConfig = nil
+    local latestSavedAt = nil
+
+    for _, configName in ipairs(configs) do
+        local normalizedName = tostring(configName):lower()
+        if normalizedName ~= "default" then
+            local configData = Library.SaveManager:GetConfigData(configName)
+            local savedAt = configData and configData.meta and configData.meta.saved_at
+
+            if type(savedAt) == "string" and (not latestSavedAt or savedAt > latestSavedAt) then
+                latestSavedAt = savedAt
+                selectedConfig = configName
+            elseif not selectedConfig then
+                selectedConfig = configName
+            end
+        end
+    end
+
+    if selectedConfig then
+        pcall(function()
+            Library.SaveManager:LoadConfig(selectedConfig)
+            queueSkinchangerConfigSync()
+        end)
+    end
+end)
+
 Library:Notify("Bloxtrike loaded.", 3)
 
 return {
