@@ -167,8 +167,8 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
-local Library = getgenv().Library
-local SaveManager = getgenv().SaveManager
+local Library = loadLocal("ui_lib.lua")
+local SaveManager = Library.SaveManager
 
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
@@ -1093,6 +1093,13 @@ Library:Notify({
 Library:OnUnload(errorHandler:Wrap("Window Close", function()
     appCleaner:Cleanup()
 end))
+
+if getgenv then
+    getgenv().BloxtrikeCleanup = function()
+        appCleaner:Cleanup()
+        Library:Unload()
+    end
+end
 
 return {
     window = Window,
