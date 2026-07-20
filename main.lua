@@ -77,19 +77,6 @@ local function loadLocal(relativePath)
         end
     end
 
-    if not chunk and loadfile then
-        local path = joinPath(ROOT, relativePath)
-        chunk, err = loadfile(path)
-    end
-
-    if not chunk and readfile and loadstring then
-        local path = joinPath(ROOT, relativePath)
-        local ok, contents = pcall(readfile, path)
-        if ok and contents then
-            chunk, err = loadstring(contents, "@" .. path)
-        end
-    end
-
     assert(chunk, err or ("Failed to load module: " .. tostring(relativePath)))
 
     local result = chunk()
