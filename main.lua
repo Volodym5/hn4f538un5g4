@@ -52,6 +52,13 @@ local WorldEffects = loadModule("src/features/visuals/WorldEffects.lua")
 local Skinchanger = loadModule("src/features/skins/Skinchanger.lua")
 
 print("All modules loaded successfully")
+print("Cleaner type:", type(Cleaner))
+print("Cleaner.new:", type(Cleaner.new))
+print("Services type:", type(Services))
+print("Services.RunService:", Services and Services.RunService)
+print("ErrorHandler type:", type(ErrorHandler))
+print("ErrorHandler.new:", type(ErrorHandler.new))
+print("GlobalsFactory type:", type(GlobalsFactory))
 
 local globals = GlobalsFactory(Services)
 local errorHandler = ErrorHandler.new(Services)
@@ -66,7 +73,9 @@ if getgenv and getgenv().BloxtrikeCleanup then
     pcall(getgenv().BloxtrikeCleanup)
 end
 
+print("About to create appCleaner...")
 local appCleaner = Cleaner.new()
+print("appCleaner created successfully")
 
 local features = {
     aimbot = Aimbot.new(context),
