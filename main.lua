@@ -101,7 +101,6 @@ local Cleaner = loadLocal("src/shared/Cleaner.lua")
 local Services = loadLocal("src/shared/Services.lua")
 local ErrorHandler = loadLocal("src/shared/ErrorHandler.lua")
 local GlobalsFactory = loadLocal("src/shared/Globals.lua")
-local UILib = loadLocal("ui_lib.lua")
 
 local Aimbot = loadLocal("src/features/combat/Aimbot.lua")
 local TriggerBot = loadLocal("src/features/combat/TriggerBot.lua")
@@ -167,7 +166,7 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
--- Use the new UI library
+-- Use the new UI library (already loaded by bootstrapper)
 local Library = getgenv().Library
 local SaveManager = Library.SaveManager
 
@@ -705,23 +704,20 @@ SkinChangerLeft:AddToggle("KnifeChangerEnabled", {
 })
 
 local knifeModels = features.skinchanger:GetKnifeModels()
-local knifeSkinDropdown
 local knifeModelDropdown = SkinChangerLeft:AddDropdown("KnifeModel", {
     Text = "Knife Model",
     Default = features.skinchanger:GetKnifeModel(),
     Values = knifeModels,
     Callback = safeUi("Knife Model", function(value)
         features.skinchanger:SetKnifeModel(value)
-        if knifeSkinDropdown then
-            local knifeModel = features.skinchanger:GetKnifeModel()
-            Library.Options["KnifeSkin"]:RemoveValues(Library.Options["KnifeSkin"].Values)
-            Library.Options["KnifeSkin"]:AddValues(features.skinchanger:GetSkinOptions(knifeModel))
-            Library.Options["KnifeSkin"]:SetValue(features.skinchanger:GetWeaponSkin(knifeModel))
-        end
+        local knifeModel = features.skinchanger:GetKnifeModel()
+        Library.Options["KnifeSkin"]:RemoveValues(Library.Options["KnifeSkin"].Values)
+        Library.Options["KnifeSkin"]:AddValues(features.skinchanger:GetSkinOptions(knifeModel))
+        Library.Options["KnifeSkin"]:SetValue(features.skinchanger:GetWeaponSkin(knifeModel))
     end),
 })
 
-knifeSkinDropdown = SkinChangerLeft:AddDropdown("KnifeSkin", {
+SkinChangerLeft:AddDropdown("KnifeSkin", {
     Text = "Knife Skin",
     Default = features.skinchanger:GetWeaponSkin(features.skinchanger:GetKnifeModel()),
     Values = features.skinchanger:GetSkinOptions(features.skinchanger:GetKnifeModel()),
@@ -768,9 +764,8 @@ SkinChangerLeft:AddToggle("GloveChangerEnabled", {
 
 local gloveModels = features.skinchanger:GetGloveModels()
 local selectedGloveModel = features.skinchanger:GetGloveModel() or gloveModels[1] or "Default"
-local gloveSkinDropdown
 
-local gloveModelDropdown = SkinChangerLeft:AddDropdown("GloveModel", {
+SkinChangerLeft:AddDropdown("GloveModel", {
     Text = "Glove Model",
     Default = selectedGloveModel,
     Values = gloveModels,
@@ -785,7 +780,7 @@ local gloveModelDropdown = SkinChangerLeft:AddDropdown("GloveModel", {
     end),
 })
 
-gloveSkinDropdown = SkinChangerLeft:AddDropdown("GloveSkin", {
+SkinChangerLeft:AddDropdown("GloveSkin", {
     Text = "Glove Skin",
     Default = features.skinchanger:GetGloveSkin(selectedGloveModel),
     Values = features.skinchanger:GetGloveSkinOptions(selectedGloveModel),
