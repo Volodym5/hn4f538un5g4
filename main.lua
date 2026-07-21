@@ -47,6 +47,25 @@ if not httpGet and game and game.HttpGet then
     end
 end
 
+-- ── Strip Luau type annotations for Lua 5.1 executors ────────────────
+local function stripTypes(source)
+    -- Remove `local var: Type = value` → `local var = value`
+    source = source:gsub("(local%s+[%w_]+)%s*:%s*[%w_%.]+(%s*=)", "%1%2")
+    -- Remove `local var: Type` at end of line (no assignment)
+    source = source:gsub("(local%s+[%w_]+)%s*:%s*[%w_%.]+%s*$", "%1")
+    -- Remove `function name(arg: Type, ...)` → `function name(arg, ...)`
+    source = source:gsub("(function%s+[%w_%.]+%b())", function(fn)
+        return fn:gsub("([%w_]+)%s*:%s*[%w_%.]+", "%1")
+    end)
+    -- Remove `) -> Type` return type annotations
+    source = source:gsub("%)%s*:%s*[%w_%.]+", ")")
+    -- Remove `: any` standalone type
+    source = source:gsub(":%s*any", "")
+    -- Remove `: Instance` / `: string` / `: number` / `: boolean` / `: table` etc. in params
+    source = source:gsub("(%():%s*[%w_%.]+", "%1")
+    return source
+end
+
 local function loadLocal(relativePath)
     local preloadedSources = bootstrap.moduleSources
     local baseUrl = bootstrap.baseUrl
@@ -61,6 +80,7 @@ local function loadLocal(relativePath)
 
     if type(preloadedSources) == "table" and type(preloadedSources[relativePath]) == "string" then
         source = preloadedSources[relativePath]
+        source = stripTypes(source)
         if loadstring then
             chunk, err = loadstring(source, "@" .. relativePath)
         end
@@ -71,6 +91,7 @@ local function loadLocal(relativePath)
         local ok, body = pcall(httpGet, url)
         if ok and type(body) == "string" and body ~= "" then
             source = body
+            source = stripTypes(source)
             if loadstring then
                 chunk, err = loadstring(source, "@" .. url)
             end
@@ -92,12 +113,11 @@ local function loadLocal(relativePath)
     return result
 end
 
--- ── Load existing modules (unchanged) ──────────────────────────────────
+-- ── Load existing modules ────────────────────────────────────────────
 local Cleaner = loadLocal("src/shared/Cleaner.lua")
 local Services = loadLocal("src/shared/Services.lua")
 local ErrorHandler = loadLocal("src/shared/ErrorHandler.lua")
 local GlobalsFactory = loadLocal("src/shared/Globals.lua")
--- NOTE: "ui_lib.lua" is REMOVED — we use the new library now
 
 local Aimbot = loadLocal("src/features/combat/Aimbot.lua")
 local TriggerBot = loadLocal("src/features/combat/TriggerBot.lua")
@@ -164,7 +184,6 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
 end))
 
 -- ── UI LIBRARY SETUP ───────────────────────────────────────────────────
--- Loaded via the bootstrapper (no inline loadstring)
 local Library = loadLocal("ui_lib/source.lua")
 local SaveManager = Library.SaveManager
 
@@ -242,7 +261,7 @@ local killFxGrp     = visualsTab:AddRightGroupbox("Kill Effects")
 local worldFxGrp    = visualsTab:AddRightGroupbox("World Effects")
 
 -- ═══════════════════════════════════════════════════════════════════════
---  TOGGLE / SLIDER / DROPDOWN HELPERS (keep IDs consistent)
+--  TOGGLE / SLIDER / DROPDOWN HELPERS
 -- ═══════════════════════════════════════════════════════════════════════
 
 -- ── Aimbot ────────────────────────────────────────────────────────────
@@ -304,20 +323,10 @@ rageGrp:AddToggle("rage_enabled", {
     Text = "Rage Mode", Default = false,
     Callback = safeUi("Rage Mode", function(v) features.rage:SetRageMode(v) end),
 })
---[[ Rage toggle key (commented in original)
-rageGrp:AddLabel("Rage Toggle Key"):AddKeyPicker("rage_togglekey", {
-    Default = "Unknown", Mode = "Always", Text = "Rage Toggle Key",
-    Callback = function(v) features.rage:SetRageToggleKey(v) end,
-})
-]]
 rageGrp:AddToggle("aimlock_enabled", {
     Text = "Aimlock", Default = false,
     Callback = safeUi("Aimlock", function(v) features.rage:SetAimlock(v) end),
 })
---[[ Aimlock keybinds (commented in original)
-rageGrp:AddLabel("Aimlock Toggle Key"):AddKeyPicker("aimlock_togglekey", { ... })
-rageGrp:AddLabel("Aimlock Hold Key"):AddKeyPicker("aimlock_holdkey", { ... })
-]]
 rageGrp:AddDropdown("aimlock_method", {
     Text = "Aimlock Method", Default = "Raw Mouse", Values = { "Raw Mouse" },
     Callback = safeUi("Aimlock Method", function(v) features.rage:SetAimlockMethod(v) end),
@@ -348,10 +357,6 @@ silentGrp:AddToggle("silentaim_wallbang", {
     Text = "Ignore Walls / Wallbang", Default = false,
     Callback = safeUi("Ignore Walls / Wallbang", function(v) features.rage:SetWallbang(v) end),
 })
---[[ Wallbang / Silent Aim toggle keys (commented in original)
-silentGrp:AddLabel("Wallbang Toggle Key"):AddKeyPicker("wallbang_togglekey", { ... })
-silentGrp:AddLabel("Silent Aim Toggle Key"):AddKeyPicker("silentaim_togglekey", { ... })
-]]
 silentGrp:AddToggle("silentaim_dynamicmiss", {
     Text = "Dynamic Miss (Hit Chance)", Default = false,
     Callback = safeUi("Dynamic Miss (Hit Chance)", function(v) features.rage:SetDynamicMiss(v) end),
@@ -394,10 +399,6 @@ targetGrp:AddToggle("rage_teamcheck", {
 })
 
 -- ── Weapon Mods ───────────────────────────────────────────────────────
---[[ Rapid Fire (commented in original)
-weaponGrp:AddToggle("rapidfire_enabled", { Text = "Rapid Fire", Default = false, Callback = ... })
-weaponGrp:AddSlider("rapidfire_tick", { ... })
-]]
 weaponGrp:AddToggle("weapon_norecoil", {
     Text = "Memory No Recoil", Default = false,
     Callback = safeUi("Memory No Recoil", function(v) features.rage:SetMemoryNoRecoil(v) end),
@@ -462,7 +463,6 @@ skinChangerGrp:AddToggle("knifechanger_enabled", {
     Callback = safeUi("Knife Changer Enabled", function(v) features.skinchanger:SetKnifeChangerEnabled(v) end),
 })
 
--- Knife Model dropdown
 local knifeModels = features.skinchanger:GetKnifeModels()
 skinChangerGrp:AddDropdown("skinchanger_knifemodel", {
     Text = "Knife Model", Default = features.skinchanger:GetKnifeModel(), Values = knifeModels,
@@ -477,7 +477,6 @@ skinChangerGrp:AddDropdown("skinchanger_knifemodel", {
     end),
 })
 
--- Knife Skin dropdown
 skinChangerGrp:AddDropdown("skinchanger_knifeskin", {
     Text = "Knife Skin",
     Default = features.skinchanger:GetWeaponSkin(features.skinchanger:GetKnifeModel()),
@@ -487,7 +486,6 @@ skinChangerGrp:AddDropdown("skinchanger_knifeskin", {
     end),
 })
 
--- Helper to refresh knife skin dropdown
 local function refreshKnifeSkinDropdown()
     local knifeModel = features.skinchanger:GetKnifeModel()
     local optId = "skinchanger_knifeskin"
@@ -497,7 +495,6 @@ local function refreshKnifeSkinDropdown()
     end
 end
 
--- Queue skinchanger sync after config loads
 local function queueSkinchangerConfigSync()
     task.spawn(function()
         task.wait(0.05)
@@ -510,11 +507,9 @@ local function queueSkinchangerConfigSync()
     end)
 end
 
--- Sync displayed knife model → skin
 Library.Options["skinchanger_knifemodel"]:SetValue(features.skinchanger:GetKnifeModel())
 refreshKnifeSkinDropdown()
 
--- Glove Changer
 skinChangerGrp:AddToggle("glovechanger_enabled", {
     Text = "Glove Changer Enabled", Default = false,
     Callback = safeUi("Glove Changer Enabled", function(v) features.skinchanger:SetGloveChangerEnabled(v) end),
@@ -556,7 +551,6 @@ skinChangerGrp:AddButton({
     end),
 })
 
--- ── Weapon Skins (per-weapon dropdowns) ────────────────────────────────
 for _, weaponName in ipairs(features.skinchanger:GetWeaponNames()) do
     if not features.skinchanger:IsKnifeModel(weaponName) then
         weaponSkinGrp:AddDropdown("skin_" .. weaponName, {
@@ -703,16 +697,6 @@ chamsGrp:AddLabel("Weapon Chams Color"):AddColorPicker("chams_weapon_color", {
     Callback = safeUi("Weapon Chams Color", function(v) features.chams:SetSetting("weaponColor", v) end),
 })
 
---[[ Bullet Tracers (commented in original)
-local bulletGrp = visualsTab:AddRightGroupbox("Bullet Tracers")
-...
-]]
-
---[[ Particle Effects (commented in original)
-local particleGrp = visualsTab:AddRightGroupbox("Particle Effects")
-...
-]]
-
 -- ── Kill Effects ──────────────────────────────────────────────────────
 killFxGrp:AddToggle("killfx_enabled", {
     Text = "Kill Effects Enabled", Default = false,
@@ -742,13 +726,8 @@ worldFxGrp:AddToggle("worldfx_antismoke", {
 })
 
 -- ═══════════════════════════════════════════════════════════════════════
---  CONFIG LOAD HOOK (sync skinchanger after loading a config)
+--  CONFIG LOAD HOOK
 -- ═══════════════════════════════════════════════════════════════════════
-
--- The library's SaveManager fires OnChanged for each option when a config
--- is loaded. We hook into that indirectly by piggybacking on the skin
--- dropdowns. But for a guaranteed sync after config load, we patch
--- SaveManager.LoadConfig.
 
 if SaveManager.LoadConfig then
     local origLoadConfig = SaveManager.LoadConfig
@@ -763,7 +742,7 @@ if SaveManager.LoadConfig then
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
---  AUTOLOAD CONFIG (pinned via middle-click in Configs dropdown)
+--  AUTOLOAD CONFIG
 -- ═══════════════════════════════════════════════════════════════════════
 
 task.defer(function()
@@ -780,7 +759,7 @@ end)
 Library:Notify("Bloxtrike loaded.", 3)
 
 -- ═══════════════════════════════════════════════════════════════════════
---  RETURN (identical shape to original)
+--  RETURN
 -- ═══════════════════════════════════════════════════════════════════════
 
 return {
