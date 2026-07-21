@@ -1,4 +1,5 @@
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
+local WHITELIST_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/whitelist.lua"
 
 local function getFileName(path)
     local text = tostring(path or "")
@@ -171,6 +172,59 @@ local function kickUnsupported(missing)
     error(shortMessage, 0)
 end
 
+local function getExecutorName()
+    if type(identifyexecutor) == "function" then
+        local ok, name = pcall(identifyexecutor)
+        if ok and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+
+    if type(getexecutorname) == "function" then
+        local ok, name = pcall(getexecutorname)
+        if ok and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+
+    return "Unknown"
+end
+
+local function kickDenied(reason)
+    local message = "[Bloxtrike] Executor not whitelisted, Contact Dev for ur Executor to Whitelist"
+    if type(reason) == "string" and reason ~= "" then
+        message = message .. " | " .. reason
+    end
+
+    local players = game:GetService("Players")
+    local player = players.LocalPlayer
+    if player then
+        pcall(function()
+            player:Kick(message)
+        end)
+    end
+
+    error(message, 0)
+end
+
+local function runExecutorWhitelist(httpGet)
+    local body = httpGet(WHITELIST_URL)
+    assert(type(body) == "string" and body ~= "", "Failed to fetch whitelist.lua")
+
+    local chunk = assert(loadstring(body, "@loader/whitelist.lua"))
+    local whitelist = chunk()
+    assert(type(whitelist) == "table", "whitelist.lua must return a table")
+
+    local executorName = getExecutorName()
+    for _, allowedName in ipairs(whitelist) do
+        if tostring(allowedName):lower() == executorName:lower() then
+            return
+        end
+    end
+
+    kickDenied(executorName)
+end
+
 local function collectMissingSupport()
     local missing = {}
 
@@ -248,6 +302,7 @@ if #missingSupport > 0 then
 end
 
 local httpGet = getHttpGet()
+runExecutorWhitelist(httpGet)
 local loadingOverlay = createLoadingOverlay("Fetching script files...")
 local files = {
     "main.lua",
@@ -260,14 +315,18 @@ local files = {
     "src/features/combat/TriggerBot.lua",
     "src/features/combat/Hitbox.lua",
     "src/features/combat/Rage.lua",
+    --"src/features/combat/RapidFire.lua",
     "src/features/movement/BunnyHop.lua",
     "src/features/movement/MovementSpeed.lua",
     "src/features/skins/Skinchanger.lua",
     "src/features/visuals/ESP.lua",
     "src/features/visuals/Chams.lua",
+    --"src/features/visuals/BulletTracers.lua",
+    --"src/features/visuals/ParticleEffects.lua",
     "src/features/visuals/KillEffects.lua",
     "src/features/visuals/WorldEffects.lua",
 }
+
 
 local MAX_CONCURRENT_FETCHES = 10
 
