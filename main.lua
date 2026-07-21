@@ -1,7 +1,3 @@
--- ============================================
--- COMBINED LOADER + MAIN SCRIPT
--- ============================================
-
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
 
 local function getFileName(path)
