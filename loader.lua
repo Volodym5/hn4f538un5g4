@@ -208,7 +208,7 @@ runExecutorWhitelist(httpGet)
 
 local files = {
     "main.lua",
-    "ui_lib/source.lua",
+    "ui_lib.lua",
     "src/shared/Cleaner.lua",
     "src/shared/ErrorHandler.lua",
     "src/shared/Services.lua",
