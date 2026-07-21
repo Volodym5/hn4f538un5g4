@@ -47,26 +47,81 @@ if not httpGet and game and game.HttpGet then
     end
 end
 
--- ── Strip Luau type annotations for Lua 5.1 executors ────────────────
+-- ── Strip Luau type annotations — ONLY for known typed files ────────
+local TYPED_FILES = {
+    ["ui_lib.lua"] = true,
+}
+
+local function hasSimpleTypes(source)
+    -- Quick heuristic: check if the source has Luau `: Type` annotation patterns
+    return source:find("local%s+[%w_]+%s*:%s*[A-Z]") ~= nil
+        or source:find("%)%s*:%s*[%w_%.]+") ~= nil
+end
+
 local function stripTypes(source)
-    -- Remove `local var: Type = value` → `local var = value`
-    source = source:gsub("(local%s+[%w_]+)%s*:%s*[%w_%.]+(%s*=)", "%1%2")
-    -- Remove `local var: Type` at end of line (no assignment)
-    source = source:gsub("(local%s+[%w_]+)%s*:%s*[%w_%.]+%s*$", "%1")
-    -- Remove `function name(arg: Type, ...)` → `function name(arg, ...)`
-    source = source:gsub("(function%s+[%w_%.]+%b())", function(fn)
-        return fn:gsub("([%w_]+)%s*:%s*[%w_%.]+", "%1")
-    end)
-    -- Remove `) -> Type` return type annotations
-    source = source:gsub("%)%s*:%s*[%w_%.]+", ")")
-    -- Remove `: any` standalone type
+    -- Only apply to files that actually have type annotations
+    if not hasSimpleTypes(source) then
+        return source
+    end
+
+    -- Remove `local var : Type =`
+    source = source:gsub("(local%s+[%w_]+)%s*:%s*%w+(%s*=)", "%1%2")
+    -- Remove `local var : Type` end of line
+    source = source:gsub("(local%s+[%w_]+)%s*:%s*%w+%s*$", "%1")
+    -- Remove return type `) -> Type`
+    source = source:gsub("%)%s*:%s*%w+", ")")
+    -- Remove `: any`
     source = source:gsub(":%s*any", "")
-    -- Remove `: Instance` / `: string` / `: number` / `: boolean` / `: table` etc. in params
-    source = source:gsub("(%():%s*[%w_%.]+", "%1")
     return source
 end
 
 local function loadLocal(relativePath)
+    local preloadedSources = bootstrap.moduleSources
+    local baseUrl = bootstrap.baseUrl
+    local cacheKey = relativePath
+
+    if moduleCache[cacheKey] ~= nil then
+        return moduleCache[cacheKey]
+    end
+
+    local chunk, err = nil, nil
+    local source = nil
+
+    if type(preloadedSources) == "table" and type(preloadedSources[relativePath]) == "string" then
+        source = preloadedSources[relativePath]
+        if loadstring then
+            chunk, err = loadstring(source, "@" .. relativePath)
+        end
+    end
+
+    if not chunk and type(baseUrl) == "string" and baseUrl ~= "" and httpGet then
+        local url = joinPath(baseUrl, relativePath)
+        local ok, body = pcall(httpGet, url)
+        if ok and type(body) == "string" and body ~= "" then
+            source = body
+            if loadstring then
+                chunk, err = loadstring(source, "@" .. url)
+            end
+        elseif ok then
+            err = string.format("HTTP fetch returned empty body for %q", url)
+        else
+            err = string.format("HTTP fetch failed for %q: %s", url, tostring(body))
+        end
+    elseif not chunk and (not baseUrl or baseUrl == "") then
+        err = "No baseUrl provided and module not found in preloaded sources"
+    elseif not chunk and not httpGet then
+        err = "No HTTP GET method available to fetch " .. relativePath
+    end
+
+    assert(chunk, err or ("Failed to load module: " .. tostring(relativePath)))
+
+    local result = chunk()
+    moduleCache[cacheKey] = result
+    return result
+end
+
+-- ── Special loader for typed files (UI library) ──────────────────────
+local function loadTypedLocal(relativePath)
     local preloadedSources = bootstrap.moduleSources
     local baseUrl = bootstrap.baseUrl
     local cacheKey = relativePath
@@ -183,8 +238,8 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
--- ── UI LIBRARY SETUP ───────────────────────────────────────────────────
-local Library = loadLocal("ui_lib.lua")
+-- ── UI LIBRARY SETUP (loaded via typed loader) ───────────────────────
+local Library = loadTypedLocal("ui_lib.lua")
 local SaveManager = Library.SaveManager
 
 SaveManager:SetLibrary(Library)
