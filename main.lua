@@ -305,7 +305,6 @@ local httpGet = getHttpGet()
 runExecutorWhitelist(httpGet)
 local loadingOverlay = createLoadingOverlay("Fetching script files...")
 local files = {
-    "main.lua",
     "ui_lib.lua",
     "src/shared/Cleaner.lua",
     "src/shared/ErrorHandler.lua",
@@ -414,11 +413,6 @@ local ok, result = xpcall(function()
 
     loadingOverlay.dismiss()
 
-    local mainChunk = assert(loadstring(sources["main.lua"], "@loader/main.lua"))
-    return mainChunk({
-        baseUrl = DEFAULT_BASE_URL,
-        moduleSources = sources,
-    })
 end, function(err)
     if debug and debug.traceback then
         return tostring(err) .. "\n" .. debug.traceback()
