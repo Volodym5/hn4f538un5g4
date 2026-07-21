@@ -47,7 +47,17 @@ if not httpGet and game and game.HttpGet then
     end
 end
 
+-- ── Preload the new UI library source through the bootstrapper ──────────
+if httpGet then
+    local ok, body = pcall(httpGet, "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/ui_lib.lua")
+    if ok and type(body) == "string" and body ~= "" then
+        bootstrap.moduleSources = bootstrap.moduleSources or {}
+        bootstrap.moduleSources["ui_lib/source.lua"] = body
+    end
+end
+
 local function loadLocal(relativePath)
+    -- [unchanged from original]
     local preloadedSources = bootstrap.moduleSources
     local baseUrl = bootstrap.baseUrl
     local cacheKey = relativePath
@@ -97,11 +107,12 @@ local function loadLocal(relativePath)
     return result
 end
 
+-- ── Load existing modules (unchanged) ──────────────────────────────────
 local Cleaner = loadLocal("src/shared/Cleaner.lua")
 local Services = loadLocal("src/shared/Services.lua")
 local ErrorHandler = loadLocal("src/shared/ErrorHandler.lua")
 local GlobalsFactory = loadLocal("src/shared/Globals.lua")
-local UILib = loadLocal("ui_lib.lua")
+-- NOTE: "ui_lib.lua" is REMOVED — we use the new library now
 
 local Aimbot = loadLocal("src/features/combat/Aimbot.lua")
 local TriggerBot = loadLocal("src/features/combat/TriggerBot.lua")
@@ -167,525 +178,627 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
     end
 end))
 
-local window = UILib.new("Bloxtrike", Enum.KeyCode.RightShift)
-window:setConfigFolder("Bloxtrike")
-window:onClose(errorHandler:Wrap("Window Close", function()
+-- ── UI LIBRARY SETUP ───────────────────────────────────────────────────
+-- Loaded via the bootstrapper (no inline loadstring)
+local Library = loadLocal("ui_lib/source.lua")
+local SaveManager = Library.SaveManager
+
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+
+local Window = Library:CreateWindow({
+    Title         = "Bloxtrike",
+    Footer        = "bloxtrike",
+    Size          = UDim2.fromOffset(760, 560),
+    Center        = true,
+    AutoShow      = true,
+    ToggleKeybind = Enum.KeyCode.RightShift,
+    SettingsTab   = true,
+    ConfigFolder  = "Bloxtrike",
+})
+
+-- ── Hook cleanup into library unload ───────────────────────────────────
+local function fullCleanup()
     appCleaner:Cleanup()
-end))
+    if getgenv then
+        getgenv().BloxtrikeCleanup = nil
+    end
+end
+
+local origUnload = Library.Unload
+function Library:Unload(...)
+    fullCleanup()
+    return origUnload(self, ...)
+end
 
 if getgenv then
     getgenv().BloxtrikeCleanup = function()
-        appCleaner:Cleanup()
-        if window and window.screenGui and window.screenGui.Parent then
-            window.screenGui:Destroy()
+        fullCleanup()
+        if Window and Window.Parent then
+            Window:Destroy()
         end
     end
 end
 
-local combatTab = window:addTab("Combat")
-local skinsTab = window:addTab("Skins")
-local visualsTab = window:addTab("Visuals")
-local configTab = window:addTab("Config")
-
-window:switchTab(combatTab)
-window:addSection("Aimbot")
+-- ── Safe UI callback wrapper ───────────────────────────────────────────
 local function safeUi(label, fn)
     return errorHandler:Wrap("UI - " .. label, fn)
 end
 
-window:addToggle("Aimbot Enabled", false, safeUi("Aimbot Enabled", function(value)
-    features.aimbot:SetEnabled(value)
-end))
-window:addToggle("Aimbot Team Check", false, safeUi("Aimbot Team Check", function(value)
-    features.aimbot:SetTeamCheck(value)
-end))
-window:addToggle("Aimbot Wall Check", false, safeUi("Aimbot Wall Check", function(value)
-    features.aimbot:SetWallCheck(value)
-end))
-window:addToggle("Aimbot Show FOV", false, safeUi("Aimbot Show FOV", function(value)
-    features.aimbot:SetShowFov(value)
-end))
-window:addSlider("Aimbot FOV Radius", 10, 500, 100, 10, safeUi("Aimbot FOV Radius", function(value)
-    features.aimbot:SetFovRadius(value)
-end))
-window:addSlider("Aimbot Smoothing", 1, 10, 3, 1, safeUi("Aimbot Smoothing", function(value)
-    features.aimbot:SetSmoothing(value)
-end))
+-- ═══════════════════════════════════════════════════════════════════════
+--  TABS & GROUPBOXES
+-- ═══════════════════════════════════════════════════════════════════════
 
-window:addSection("TriggerBot")
-window:addToggle("TriggerBot Enabled", false, safeUi("TriggerBot Enabled", function(value)
-    features.triggerBot:SetEnabled(value)
-end))
-window:addSlider("TriggerBot Delay MS", 0, 500, 0, 10, safeUi("TriggerBot Delay MS", function(value)
-    features.triggerBot:SetDelayMs(value)
-end))
+local combatTab  = Window:AddTab("Combat",  "sword")
+local skinsTab   = Window:AddTab("Skins",   "shirt")
+local visualsTab = Window:AddTab("Visuals", "eye")
 
-window:addSection("Hitbox")
-window:addToggle("Hitbox Enabled", false, safeUi("Hitbox Enabled", function(value)
-    features.hitbox:SetEnabled(value)
-end))
-window:addToggle("Hitbox Team Check", false, safeUi("Hitbox Team Check", function(value)
-    features.hitbox:SetTeamCheck(value)
-end))
-window:addSlider("Hitbox Size", 1, 3, 3, 0.1, safeUi("Hitbox Size", function(value)
-    features.hitbox:SetSize(value)
-end))
-window:addSlider("Hitbox Transparency", 0, 1, 0.5, 0.05, safeUi("Hitbox Transparency", function(value)
-    features.hitbox:SetTransparency(value)
-end))
+-- Combat tab — Left column
+local aimbotGrp    = combatTab:AddLeftGroupbox("Aimbot")
+local triggerGrp   = combatTab:AddLeftGroupbox("TriggerBot")
+local hitboxGrp    = combatTab:AddLeftGroupbox("Hitbox")
+local movemtGrp    = combatTab:AddLeftGroupbox("Movement")
 
-window:addSection("Rage")
-window:addToggle("Rage Mode", false, safeUi("Rage Mode", function(value)
-    features.rage:SetRageMode(value)
-end))
---[[
-window:addKeybind("Rage Toggle Key", Enum.KeyCode.Unknown, safeUi("Rage Toggle Key", function(value)
-    features.rage:SetRageToggleKey(value)
-end))
+-- Combat tab — Right column
+local rageGrp      = combatTab:AddRightGroupbox("Rage / Aimlock")
+local silentGrp    = combatTab:AddRightGroupbox("Silent Aim")
+local targetGrp    = combatTab:AddRightGroupbox("Targeting")
+local weaponGrp    = combatTab:AddRightGroupbox("Weapon Mods")
+
+-- Skins tab — full-width left only
+local skinChangerGrp = skinsTab:AddLeftGroupbox("Skin Changer")
+local weaponSkinGrp  = skinsTab:AddLeftGroupbox("Weapon Skins")
+
+-- Visuals tab — Left column
+local espGrp        = visualsTab:AddLeftGroupbox("ESP")
+-- Visuals tab — Right column
+local chamsGrp      = visualsTab:AddRightGroupbox("Chams")
+local killFxGrp     = visualsTab:AddRightGroupbox("Kill Effects")
+local worldFxGrp    = visualsTab:AddRightGroupbox("World Effects")
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  TOGGLE / SLIDER / DROPDOWN HELPERS (keep IDs consistent)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- ── Aimbot ────────────────────────────────────────────────────────────
+aimbotGrp:AddToggle("aimbot_enabled", {
+    Text = "Aimbot Enabled", Default = false,
+    Callback = safeUi("Aimbot Enabled", function(v) features.aimbot:SetEnabled(v) end),
+})
+aimbotGrp:AddToggle("aimbot_teamcheck", {
+    Text = "Aimbot Team Check", Default = false,
+    Callback = safeUi("Aimbot Team Check", function(v) features.aimbot:SetTeamCheck(v) end),
+})
+aimbotGrp:AddToggle("aimbot_wallcheck", {
+    Text = "Aimbot Wall Check", Default = false,
+    Callback = safeUi("Aimbot Wall Check", function(v) features.aimbot:SetWallCheck(v) end),
+})
+aimbotGrp:AddToggle("aimbot_showfov", {
+    Text = "Aimbot Show FOV", Default = false,
+    Callback = safeUi("Aimbot Show FOV", function(v) features.aimbot:SetShowFov(v) end),
+})
+aimbotGrp:AddSlider("aimbot_fovradius", {
+    Text = "Aimbot FOV Radius", Default = 100, Min = 10, Max = 500, Rounding = 0,
+    Callback = safeUi("Aimbot FOV Radius", function(v) features.aimbot:SetFovRadius(v) end),
+})
+aimbotGrp:AddSlider("aimbot_smoothing", {
+    Text = "Aimbot Smoothing", Default = 3, Min = 1, Max = 10, Rounding = 0,
+    Callback = safeUi("Aimbot Smoothing", function(v) features.aimbot:SetSmoothing(v) end),
+})
+
+-- ── TriggerBot ────────────────────────────────────────────────────────
+triggerGrp:AddToggle("triggerbot_enabled", {
+    Text = "TriggerBot Enabled", Default = false,
+    Callback = safeUi("TriggerBot Enabled", function(v) features.triggerBot:SetEnabled(v) end),
+})
+triggerGrp:AddSlider("triggerbot_delay", {
+    Text = "TriggerBot Delay MS", Default = 0, Min = 0, Max = 500, Rounding = 0, Suffix = "ms",
+    Callback = safeUi("TriggerBot Delay MS", function(v) features.triggerBot:SetDelayMs(v) end),
+})
+
+-- ── Hitbox ────────────────────────────────────────────────────────────
+hitboxGrp:AddToggle("hitbox_enabled", {
+    Text = "Hitbox Enabled", Default = false,
+    Callback = safeUi("Hitbox Enabled", function(v) features.hitbox:SetEnabled(v) end),
+})
+hitboxGrp:AddToggle("hitbox_teamcheck", {
+    Text = "Hitbox Team Check", Default = false,
+    Callback = safeUi("Hitbox Team Check", function(v) features.hitbox:SetTeamCheck(v) end),
+})
+hitboxGrp:AddSlider("hitbox_size", {
+    Text = "Hitbox Size", Default = 3, Min = 1, Max = 3, Rounding = 1,
+    Callback = safeUi("Hitbox Size", function(v) features.hitbox:SetSize(v) end),
+})
+hitboxGrp:AddSlider("hitbox_transparency", {
+    Text = "Hitbox Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2,
+    Callback = safeUi("Hitbox Transparency", function(v) features.hitbox:SetTransparency(v) end),
+})
+
+-- ── Rage / Aimlock ────────────────────────────────────────────────────
+rageGrp:AddToggle("rage_enabled", {
+    Text = "Rage Mode", Default = false,
+    Callback = safeUi("Rage Mode", function(v) features.rage:SetRageMode(v) end),
+})
+--[[ Rage toggle key (commented in original)
+rageGrp:AddLabel("Rage Toggle Key"):AddKeyPicker("rage_togglekey", {
+    Default = "Unknown", Mode = "Always", Text = "Rage Toggle Key",
+    Callback = function(v) features.rage:SetRageToggleKey(v) end,
+})
 ]]
-window:addSection("Aimlock")
-window:addToggle("Aimlock", false, safeUi("Aimlock", function(value)
-    features.rage:SetAimlock(value)
-end))
---[[window:addKeybind("Aimlock Toggle Key", Enum.KeyCode.Unknown, safeUi("Aimlock Toggle Key", function(value)
-    features.rage:SetAimlockToggleKey(value)
-end))
-window:addKeybind("Aimlock HoldKey", Enum.UserInputType.MouseButton2, safeUi("Aimlock HoldKey", function(value)
-    features.rage:SetAimlockHoldKey(value)
-end))]]
-window:addDropdown("Aimlock Method", { "Raw Mouse" }, "Raw Mouse", safeUi("Aimlock Method", function(value)
-    features.rage:SetAimlockMethod(value)
-end))
-window:addSlider("Aimlock Fov Size", 10, 1000, 150, 1, safeUi("Aimlock Fov Size", function(value)
-    features.rage:SetAimlockFov(value)
-end))
-window:addSlider("Aim Smoothness", 1, 10, 2, 1, safeUi("Aim Smoothness", function(value)
-    features.rage:SetAimSmoothness(value)
-end))
-window:addSlider("Aim Jitter (Randomize)", 0, 50, 10, 1, safeUi("Aim Jitter (Randomize)", function(value)
-    features.rage:SetAimJitter(value)
-end))
-window:addToggle("FlickBOT", false, safeUi("FlickBOT", function(value)
-    features.rage:SetFlickBot(value)
-end))
-window:addSection("Silent Aim")
-window:addToggle("Silent Aim", false, safeUi("Silent Aim", function(value)
-    features.rage:SetSilentAim(value)
-end))
-window:addToggle("Ignore Walls / Wallbang", false, safeUi("Ignore Walls / Wallbang", function(value)
-    features.rage:SetWallbang(value)
-end))
---[[window:addKeybind("Wallbang Toggle Key", Enum.KeyCode.Unknown, safeUi("Wallbang Toggle Key", function(value)
-    features.rage:SetWallbangToggleKey(value)
-end))
-window:addKeybind("Silent Aim Toggle Key", Enum.KeyCode.Unknown, safeUi("Silent Aim Toggle Key", function(value)
-    features.rage:SetSilentAimToggleKey(value)
-end))]]
-window:addToggle("Dynamic Miss (Hit Chance)", false, safeUi("Dynamic Miss (Hit Chance)", function(value)
-    features.rage:SetDynamicMiss(value)
-end))
-window:addSlider("Hit Chance %", 1, 100, 100, 1, safeUi("Hit Chance %", function(value)
-    features.rage:SetBaseHitChance(value)
-end))
-window:addToggle("Show Circle", false, safeUi("Show Circle", function(value)
-    features.rage:SetShowFovCircle(value)
-end))
-window:addSlider("Fov Size", 50, 1000, 150, 1, safeUi("Fov Size", function(value)
-    features.rage:SetFovSize(value)
-end))
-window:addSection("Targeting")
-window:addDropdown("TargetPart", features.rage:GetTargetParts(), features.rage:GetTargetPart(), safeUi("TargetPart", function(value)
-    features.rage:SetTargetPart(value)
-end))
-window:addToggle("Random Part", false, safeUi("Random Part", function(value)
-    features.rage:SetRandomPart(value)
-end))
-window:addToggle("360 FOV (All Directions)", false, safeUi("360 FOV (All Directions)", function(value)
-    features.rage:SetFullFov360(value)
-end))
-window:addToggle("AimWall Check", true, safeUi("AimWall Check", function(value)
-    features.rage:SetAimWallCheck(value)
-end))
-window:addToggle("TeamCheck", true, safeUi("TeamCheck", function(value)
-    features.rage:SetTeamCheck(value)
-end))
-window:addSection("Weapon Mods")
---[[
-window:addToggle("Rapid Fire", false, safeUi("Rapid Fire", function(value)
-    features.rapidFire:SetEnabled(value)
-end))
-window:addSlider("Rapid Fire Tick (s)", 0.01, 0.2, 0.05, 0.01, safeUi("Rapid Fire Tick", function(value)
-    features.rapidFire:SetTick(value)
-end))
+rageGrp:AddToggle("aimlock_enabled", {
+    Text = "Aimlock", Default = false,
+    Callback = safeUi("Aimlock", function(v) features.rage:SetAimlock(v) end),
+})
+--[[ Aimlock keybinds (commented in original)
+rageGrp:AddLabel("Aimlock Toggle Key"):AddKeyPicker("aimlock_togglekey", { ... })
+rageGrp:AddLabel("Aimlock Hold Key"):AddKeyPicker("aimlock_holdkey", { ... })
 ]]
-window:addToggle("Memory No Recoil", false, safeUi("Memory No Recoil", function(value)
-    features.rage:SetMemoryNoRecoil(value)
-end))
-window:addToggle("No Spread", false, safeUi("No Spread", function(value)
-    features.rage:SetNoSpread(value)
-end))
-window:addToggle("Auto Clicker (Hold LMB)", false, safeUi("Auto Clicker (Hold LMB)", function(value)
-    features.rage:SetAutoClicker(value)
-end))
-window:addSlider("Auto Click Delay (ms)", 10, 500, 50, 1, safeUi("Auto Click Delay (ms)", function(value)
-    features.rage:SetAutoClickDelay(value)
-end))
-window:addToggle("Instant Reload", false, safeUi("Instant Reload", function(value)
-    features.rage:SetInstantReload(value)
-end))
-window:addToggle("Insta Equip", false, safeUi("Insta Equip", function(value)
-    features.rage:SetInstaEquip(value)
-end))
-window:addToggle("RCS", false, safeUi("RCS", function(value)
-    features.rage:SetRcs(value)
-end))
-window:addSlider("RCS Strength", 0, 100, 50, 1, safeUi("RCS Strength", function(value)
-    features.rage:SetRcsStrength(value)
-end))
-window:addSlider("RCS Delay", 0, 500, 0, 1, safeUi("RCS Delay", function(value)
-    features.rage:SetRcsDelay(value)
-end))
+rageGrp:AddDropdown("aimlock_method", {
+    Text = "Aimlock Method", Default = "Raw Mouse", Values = { "Raw Mouse" },
+    Callback = safeUi("Aimlock Method", function(v) features.rage:SetAimlockMethod(v) end),
+})
+rageGrp:AddSlider("aimlock_fov", {
+    Text = "Aimlock Fov Size", Default = 150, Min = 10, Max = 1000, Rounding = 0,
+    Callback = safeUi("Aimlock Fov Size", function(v) features.rage:SetAimlockFov(v) end),
+})
+rageGrp:AddSlider("aimlock_smoothness", {
+    Text = "Aim Smoothness", Default = 2, Min = 1, Max = 10, Rounding = 0,
+    Callback = safeUi("Aim Smoothness", function(v) features.rage:SetAimSmoothness(v) end),
+})
+rageGrp:AddSlider("aimlock_jitter", {
+    Text = "Aim Jitter (Randomize)", Default = 10, Min = 0, Max = 50, Rounding = 0,
+    Callback = safeUi("Aim Jitter (Randomize)", function(v) features.rage:SetAimJitter(v) end),
+})
+rageGrp:AddToggle("flickbot_enabled", {
+    Text = "FlickBOT", Default = false,
+    Callback = safeUi("FlickBOT", function(v) features.rage:SetFlickBot(v) end),
+})
 
-window:addSection("Movement")
-window:addToggle("Bunny Hop Enabled", false, safeUi("Bunny Hop Enabled", function(value)
-    features.bunnyHop:SetEnabled(value)
-end))
-window:addToggle("Movement Speed Enabled", false, safeUi("Movement Speed Enabled", function(value)
-    features.movementSpeed:SetEnabled(value)
-end))
-window:addSlider("Movement Speed (st/s)", 5, 32, 15, 1, safeUi("Movement Speed (st/s)", function(value)
-    features.movementSpeed:SetSpeedValue(value)
-end))
+-- ── Silent Aim ────────────────────────────────────────────────────────
+silentGrp:AddToggle("silentaim_enabled", {
+    Text = "Silent Aim", Default = false,
+    Callback = safeUi("Silent Aim", function(v) features.rage:SetSilentAim(v) end),
+})
+silentGrp:AddToggle("silentaim_wallbang", {
+    Text = "Ignore Walls / Wallbang", Default = false,
+    Callback = safeUi("Ignore Walls / Wallbang", function(v) features.rage:SetWallbang(v) end),
+})
+--[[ Wallbang / Silent Aim toggle keys (commented in original)
+silentGrp:AddLabel("Wallbang Toggle Key"):AddKeyPicker("wallbang_togglekey", { ... })
+silentGrp:AddLabel("Silent Aim Toggle Key"):AddKeyPicker("silentaim_togglekey", { ... })
+]]
+silentGrp:AddToggle("silentaim_dynamicmiss", {
+    Text = "Dynamic Miss (Hit Chance)", Default = false,
+    Callback = safeUi("Dynamic Miss (Hit Chance)", function(v) features.rage:SetDynamicMiss(v) end),
+})
+silentGrp:AddSlider("silentaim_hitchance", {
+    Text = "Hit Chance %", Default = 100, Min = 1, Max = 100, Rounding = 0, Suffix = "%",
+    Callback = safeUi("Hit Chance %", function(v) features.rage:SetBaseHitChance(v) end),
+})
+silentGrp:AddToggle("silentaim_showcircle", {
+    Text = "Show Circle", Default = false,
+    Callback = safeUi("Show Circle", function(v) features.rage:SetShowFovCircle(v) end),
+})
+silentGrp:AddSlider("silentaim_fovsize", {
+    Text = "Fov Size", Default = 150, Min = 50, Max = 1000, Rounding = 0,
+    Callback = safeUi("Fov Size", function(v) features.rage:SetFovSize(v) end),
+})
 
-window:switchTab(skinsTab)
-window:addSection("Skin Changer")
-window:addToggle("Weapon Skin Changer Enabled", false, safeUi("Weapon Skin Changer Enabled", function(value)
-    features.skinchanger:SetSkinChangerEnabled(value)
-end))
-window:addToggle("Knife Changer Enabled", false, safeUi("Knife Changer Enabled", function(value)
-    features.skinchanger:SetKnifeChangerEnabled(value)
-end))
+-- ── Targeting ─────────────────────────────────────────────────────────
+targetGrp:AddDropdown("rage_targetpart", {
+    Text = "TargetPart",
+    Default = features.rage:GetTargetPart(),
+    Values  = features.rage:GetTargetParts(),
+    Callback = safeUi("TargetPart", function(v) features.rage:SetTargetPart(v) end),
+})
+targetGrp:AddToggle("rage_randompart", {
+    Text = "Random Part", Default = false,
+    Callback = safeUi("Random Part", function(v) features.rage:SetRandomPart(v) end),
+})
+targetGrp:AddToggle("rage_360fov", {
+    Text = "360 FOV (All Directions)", Default = false,
+    Callback = safeUi("360 FOV (All Directions)", function(v) features.rage:SetFullFov360(v) end),
+})
+targetGrp:AddToggle("rage_aimwallcheck", {
+    Text = "AimWall Check", Default = true,
+    Callback = safeUi("AimWall Check", function(v) features.rage:SetAimWallCheck(v) end),
+})
+targetGrp:AddToggle("rage_teamcheck", {
+    Text = "TeamCheck", Default = true,
+    Callback = safeUi("TeamCheck", function(v) features.rage:SetTeamCheck(v) end),
+})
 
+-- ── Weapon Mods ───────────────────────────────────────────────────────
+--[[ Rapid Fire (commented in original)
+weaponGrp:AddToggle("rapidfire_enabled", { Text = "Rapid Fire", Default = false, Callback = ... })
+weaponGrp:AddSlider("rapidfire_tick", { ... })
+]]
+weaponGrp:AddToggle("weapon_norecoil", {
+    Text = "Memory No Recoil", Default = false,
+    Callback = safeUi("Memory No Recoil", function(v) features.rage:SetMemoryNoRecoil(v) end),
+})
+weaponGrp:AddToggle("weapon_nospread", {
+    Text = "No Spread", Default = false,
+    Callback = safeUi("No Spread", function(v) features.rage:SetNoSpread(v) end),
+})
+weaponGrp:AddToggle("weapon_autoclicker", {
+    Text = "Auto Clicker (Hold LMB)", Default = false,
+    Callback = safeUi("Auto Clicker (Hold LMB)", function(v) features.rage:SetAutoClicker(v) end),
+})
+weaponGrp:AddSlider("weapon_autoclickdelay", {
+    Text = "Auto Click Delay (ms)", Default = 50, Min = 10, Max = 500, Rounding = 0, Suffix = "ms",
+    Callback = safeUi("Auto Click Delay (ms)", function(v) features.rage:SetAutoClickDelay(v) end),
+})
+weaponGrp:AddToggle("weapon_instantreload", {
+    Text = "Instant Reload", Default = false,
+    Callback = safeUi("Instant Reload", function(v) features.rage:SetInstantReload(v) end),
+})
+weaponGrp:AddToggle("weapon_instaequip", {
+    Text = "Insta Equip", Default = false,
+    Callback = safeUi("Insta Equip", function(v) features.rage:SetInstaEquip(v) end),
+})
+weaponGrp:AddToggle("weapon_rcs", {
+    Text = "RCS", Default = false,
+    Callback = safeUi("RCS", function(v) features.rage:SetRcs(v) end),
+})
+weaponGrp:AddSlider("weapon_rcsstrength", {
+    Text = "RCS Strength", Default = 50, Min = 0, Max = 100, Rounding = 0, Suffix = "%",
+    Callback = safeUi("RCS Strength", function(v) features.rage:SetRcsStrength(v) end),
+})
+weaponGrp:AddSlider("weapon_rcsdelay", {
+    Text = "RCS Delay", Default = 0, Min = 0, Max = 500, Rounding = 0, Suffix = "ms",
+    Callback = safeUi("RCS Delay", function(v) features.rage:SetRcsDelay(v) end),
+})
+
+-- ── Movement ──────────────────────────────────────────────────────────
+movemtGrp:AddToggle("bunnyhop_enabled", {
+    Text = "Bunny Hop Enabled", Default = false,
+    Callback = safeUi("Bunny Hop Enabled", function(v) features.bunnyHop:SetEnabled(v) end),
+})
+movemtGrp:AddToggle("movespeed_enabled", {
+    Text = "Movement Speed Enabled", Default = false,
+    Callback = safeUi("Movement Speed Enabled", function(v) features.movementSpeed:SetEnabled(v) end),
+})
+movemtGrp:AddSlider("movespeed_value", {
+    Text = "Movement Speed (st/s)", Default = 15, Min = 5, Max = 32, Rounding = 0,
+    Callback = safeUi("Movement Speed (st/s)", function(v) features.movementSpeed:SetSpeedValue(v) end),
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  SKINS TAB
+-- ═══════════════════════════════════════════════════════════════════════
+
+skinChangerGrp:AddToggle("skinchanger_enabled", {
+    Text = "Weapon Skin Changer Enabled", Default = false,
+    Callback = safeUi("Weapon Skin Changer Enabled", function(v) features.skinchanger:SetSkinChangerEnabled(v) end),
+})
+skinChangerGrp:AddToggle("knifechanger_enabled", {
+    Text = "Knife Changer Enabled", Default = false,
+    Callback = safeUi("Knife Changer Enabled", function(v) features.skinchanger:SetKnifeChangerEnabled(v) end),
+})
+
+-- Knife Model dropdown
 local knifeModels = features.skinchanger:GetKnifeModels()
-local knifeSkinDropdown
-local knifeModelDropdown = window:addDropdown(
-    "Knife Model",
-    knifeModels,
-    features.skinchanger:GetKnifeModel(),
-    safeUi("Knife Model", function(value)
+skinChangerGrp:AddDropdown("skinchanger_knifemodel", {
+    Text = "Knife Model", Default = features.skinchanger:GetKnifeModel(), Values = knifeModels,
+    Callback = safeUi("Knife Model", function(value)
         features.skinchanger:SetKnifeModel(value)
-        if knifeSkinDropdown then
-            local knifeModel = features.skinchanger:GetKnifeModel()
-            knifeSkinDropdown.refresh(features.skinchanger:GetSkinOptions(knifeModel))
-            knifeSkinDropdown.set(features.skinchanger:GetWeaponSkin(knifeModel))
+        local optId = "skinchanger_knifeskin"
+        if Library.Options[optId] then
+            local newOptions = features.skinchanger:GetSkinOptions(value)
+            Library.Options[optId]:SetValues(newOptions)
+            Library.Options[optId]:SetValue(features.skinchanger:GetWeaponSkin(value))
         end
-    end)
-)
+    end),
+})
 
-knifeSkinDropdown = window:addDropdown(
-    "Knife Skin",
-    features.skinchanger:GetSkinOptions(features.skinchanger:GetKnifeModel()),
-    features.skinchanger:GetWeaponSkin(features.skinchanger:GetKnifeModel()),
-    safeUi("Knife Skin", function(value)
+-- Knife Skin dropdown
+skinChangerGrp:AddDropdown("skinchanger_knifeskin", {
+    Text = "Knife Skin",
+    Default = features.skinchanger:GetWeaponSkin(features.skinchanger:GetKnifeModel()),
+    Values  = features.skinchanger:GetSkinOptions(features.skinchanger:GetKnifeModel()),
+    Callback = safeUi("Knife Skin", function(value)
         features.skinchanger:SetWeaponSkin(features.skinchanger:GetKnifeModel(), value)
-    end)
-)
+    end),
+})
 
+-- Helper to refresh knife skin dropdown
 local function refreshKnifeSkinDropdown()
     local knifeModel = features.skinchanger:GetKnifeModel()
-    knifeSkinDropdown.refresh(features.skinchanger:GetSkinOptions(knifeModel))
-    knifeSkinDropdown.set(features.skinchanger:GetWeaponSkin(knifeModel))
+    local optId = "skinchanger_knifeskin"
+    if Library.Options[optId] then
+        Library.Options[optId]:SetValues(features.skinchanger:GetSkinOptions(knifeModel))
+        Library.Options[optId]:SetValue(features.skinchanger:GetWeaponSkin(knifeModel))
+    end
 end
 
+-- Queue skinchanger sync after config loads
 local function queueSkinchangerConfigSync()
     task.spawn(function()
         task.wait(0.05)
         pcall(refreshKnifeSkinDropdown)
-        pcall(function()
-            features.skinchanger:ApplyNow()
-        end)
+        pcall(function() features.skinchanger:ApplyNow() end)
         task.wait(0.35)
-        pcall(function()
-            features.skinchanger:ApplyNow()
-        end)
+        pcall(function() features.skinchanger:ApplyNow() end)
         task.wait(0.8)
-        pcall(function()
-            features.skinchanger:ApplyNow()
-        end)
+        pcall(function() features.skinchanger:ApplyNow() end)
     end)
 end
 
-knifeModelDropdown.set(features.skinchanger:GetKnifeModel())
+-- Sync displayed knife model → skin
+Library.Options["skinchanger_knifemodel"]:SetValue(features.skinchanger:GetKnifeModel())
 refreshKnifeSkinDropdown()
 
-window:addToggle("Glove Changer Enabled", false, safeUi("Glove Changer Enabled", function(value)
-    features.skinchanger:SetGloveChangerEnabled(value)
-end))
+-- Glove Changer
+skinChangerGrp:AddToggle("glovechanger_enabled", {
+    Text = "Glove Changer Enabled", Default = false,
+    Callback = safeUi("Glove Changer Enabled", function(v) features.skinchanger:SetGloveChangerEnabled(v) end),
+})
 
 local gloveModels = features.skinchanger:GetGloveModels()
 local selectedGloveModel = features.skinchanger:GetGloveModel() or gloveModels[1] or "Default"
-local gloveSkinDropdown
 
-local gloveModelDropdown = window:addDropdown(
-    "Glove Model",
-    gloveModels,
-    selectedGloveModel,
-    safeUi("Glove Model", function(value)
+skinChangerGrp:AddDropdown("skinchanger_glovemodel", {
+    Text = "Glove Model", Default = selectedGloveModel, Values = gloveModels,
+    Callback = safeUi("Glove Model", function(value)
         features.skinchanger:SetGloveModel(value)
-        local skinOptions = features.skinchanger:GetGloveSkinOptions(value)
-        if gloveSkinDropdown then
-            gloveSkinDropdown.refresh(skinOptions)
-            gloveSkinDropdown.set(features.skinchanger:GetGloveSkin(value))
+        local optId = "skinchanger_gloveskin"
+        if Library.Options[optId] then
+            local skinOptions = features.skinchanger:GetGloveSkinOptions(value)
+            Library.Options[optId]:SetValues(skinOptions)
+            Library.Options[optId]:SetValue(features.skinchanger:GetGloveSkin(value))
         end
-    end)
-)
+    end),
+})
 
-gloveSkinDropdown = window:addDropdown(
-    "Glove Skin",
-    features.skinchanger:GetGloveSkinOptions(selectedGloveModel),
-    features.skinchanger:GetGloveSkin(selectedGloveModel),
-    safeUi("Glove Skin", function(value)
-        features.skinchanger:SetGloveSkin(value)
-    end)
-)
+skinChangerGrp:AddDropdown("skinchanger_gloveskin", {
+    Text = "Glove Skin",
+    Default = features.skinchanger:GetGloveSkin(selectedGloveModel),
+    Values  = features.skinchanger:GetGloveSkinOptions(selectedGloveModel),
+    Callback = safeUi("Glove Skin", function(value) features.skinchanger:SetGloveSkin(value) end),
+})
 
-window:addSlider("Skin Inventory Refresh Rate", 1, 10, 2, 1, safeUi("Skin Inventory Refresh Rate", function(value)
-    features.skinchanger:SetInventoryRefreshRate(value)
-end))
-window:addButton("Apply Skin Changes", safeUi("Apply Skin Changes", function()
-    features.skinchanger:ApplyNow()
-    refreshKnifeSkinDropdown()
-end))
+skinChangerGrp:AddSlider("skinchanger_refreshrate", {
+    Text = "Skin Inventory Refresh Rate", Default = 2, Min = 1, Max = 10, Rounding = 0,
+    Callback = safeUi("Skin Inventory Refresh Rate", function(v) features.skinchanger:SetInventoryRefreshRate(v) end),
+})
 
-window:addSection("Weapon Skins")
+skinChangerGrp:AddButton({
+    Text = "Apply Skin Changes",
+    Func = safeUi("Apply Skin Changes", function()
+        features.skinchanger:ApplyNow()
+        refreshKnifeSkinDropdown()
+    end),
+})
+
+-- ── Weapon Skins (per-weapon dropdowns) ────────────────────────────────
 for _, weaponName in ipairs(features.skinchanger:GetWeaponNames()) do
     if not features.skinchanger:IsKnifeModel(weaponName) then
-        window:addDropdown(
-            "Skin - " .. weaponName,
-            features.skinchanger:GetSkinOptions(weaponName),
-            features.skinchanger:GetWeaponSkin(weaponName),
-            safeUi("Skin - " .. weaponName, function(value)
+        weaponSkinGrp:AddDropdown("skin_" .. weaponName, {
+            Text = "Skin - " .. weaponName,
+            Default = features.skinchanger:GetWeaponSkin(weaponName),
+            Values  = features.skinchanger:GetSkinOptions(weaponName),
+            Callback = safeUi("Skin - " .. weaponName, function(value)
                 features.skinchanger:SetWeaponSkin(weaponName, value)
-            end)
-        )
+            end),
+        })
     end
 end
 
-window:switchTab(visualsTab)
-window:addSection("ESP")
-window:addToggle("ESP Enabled", false, safeUi("ESP Enabled", function(value)
-    features.esp:SetSetting("enabled", value)
-end))
-window:addToggle("ESP Team Check", false, safeUi("ESP Team Check", function(value)
-    features.esp:SetSetting("teamCheck", value)
-end))
-window:addToggle("ESP Show Box", false, safeUi("ESP Show Box", function(value)
-    features.esp:SetSetting("showBox", value)
-end))
-window:addToggle("ESP Show Health", false, safeUi("ESP Show Health", function(value)
-    features.esp:SetSetting("showHealth", value)
-end))
-window:addToggle("ESP Show Name", false, safeUi("ESP Show Name", function(value)
-    features.esp:SetSetting("showName", value)
-end))
-window:addToggle("ESP Show Distance", false, safeUi("ESP Show Distance", function(value)
-    features.esp:SetSetting("showDistance", value)
-end))
-window:addToggle("ESP Show Skeleton", false, safeUi("ESP Show Skeleton", function(value)
-    features.esp:SetSetting("showSkeleton", value)
-end))
-window:addToggle("ESP Show Head Dot", false, safeUi("ESP Show Head Dot", function(value)
-    features.esp:SetSetting("showHeadDot", value)
-end))
-window:addToggle("ESP Show Tracers", false, safeUi("ESP Show Tracers", function(value)
-    features.esp:SetSetting("showTracers", value)
-end))
-window:addToggle("ESP Rainbow", false, safeUi("ESP Rainbow", function(value)
-    features.esp:SetSetting("rainbow", value)
-end))
-window:addSlider("ESP Rainbow Speed", 0.1, 10, 2, 0.1, safeUi("ESP Rainbow Speed", function(value)
-    features.esp:SetSetting("rainbowSpeed", value)
-end))
-window:addSlider("ESP Text Size", 10, 20, 15, 1, safeUi("ESP Text Size", function(value)
-    features.esp:SetSetting("textSize", value)
-end))
-window:addSlider("ESP Box Thickness", 1, 3, 1.5, 0.1, safeUi("ESP Box Thickness", function(value)
-    features.esp:SetSetting("boxThickness", value)
-end))
-window:addSlider("ESP Max Distance", 0, 500, 0, 10, safeUi("ESP Max Distance", function(value)
-    features.esp:SetSetting("maxDistance", value)
-end))
-window:addColorPicker("ESP Box Color", Color3.fromRGB(255, 255, 255), safeUi("ESP Box Color", function(value)
-    features.esp:SetSetting("boxColor", value)
-end))
-window:addColorPicker("ESP Text Color", Color3.fromRGB(255, 255, 255), safeUi("ESP Text Color", function(value)
-    features.esp:SetSetting("textColor", value)
-end))
-window:addColorPicker("ESP Skeleton Color", Color3.fromRGB(255, 255, 255), safeUi("ESP Skeleton Color", function(value)
-    features.esp:SetSetting("skeletonColor", value)
-end))
-window:addColorPicker("ESP Tracer Color", Color3.fromRGB(255, 51, 153), safeUi("ESP Tracer Color", function(value)
-    features.esp:SetSetting("tracerColor", value)
-end))
-window:addColorPicker("ESP Head Dot Color", Color3.fromRGB(255, 255, 255), safeUi("ESP Head Dot Color", function(value)
-    features.esp:SetSetting("headDotColor", value)
-end))
+-- ═══════════════════════════════════════════════════════════════════════
+--  VISUALS TAB
+-- ═══════════════════════════════════════════════════════════════════════
 
-window:addSection("Chams")
-window:addToggle("Chams Rainbow", false, safeUi("Chams Rainbow", function(value)
-    features.chams:SetSetting("rainbow", value)
-end))
-window:addSlider("Chams Rainbow Speed", 0.1, 10, 2, 0.1, safeUi("Chams Rainbow Speed", function(value)
-    features.chams:SetSetting("rainbowSpeed", value)
-end))
-window:addToggle("Player Chams Enabled", false, safeUi("Player Chams Enabled", function(value)
-    features.chams:SetSetting("playerEnabled", value)
-end))
-window:addToggle("Player Chams Team Check", false, safeUi("Player Chams Team Check", function(value)
-    features.chams:SetSetting("playerTeamCheck", value)
-end))
-window:addToggle("Visible Only", false, safeUi("Player Chams Visible Only", function(value)
-    features.chams:SetSetting("playerVisibleOnly", value)
-end))
-window:addSlider("Player Chams Fill", 0, 1, 0.7, 0.05, safeUi("Player Chams Fill", function(value)
-    features.chams:SetSetting("playerFillTransparency", value)
-end))
-window:addSlider("Player Chams Outline", 0, 1, 0, 0.05, safeUi("Player Chams Outline", function(value)
-    features.chams:SetSetting("playerOutlineTransparency", value)
-end))
-window:addColorPicker("Player Chams Color", Color3.fromRGB(255, 0, 0), safeUi("Player Chams Color", function(value)
-    features.chams:SetSetting("playerColor", value)
-end))
-window:addToggle("Weapon Chams Enabled", false, safeUi("Weapon Chams Enabled", function(value)
-    features.chams:SetSetting("weaponEnabled", value)
-end))
-window:addSlider("Weapon Chams Fill", 0, 1, 0.5, 0.05, safeUi("Weapon Chams Fill", function(value)
-    features.chams:SetSetting("weaponFillTransparency", value)
-end))
-window:addSlider("Weapon Chams Outline", 0, 1, 0, 0.05, safeUi("Weapon Chams Outline", function(value)
-    features.chams:SetSetting("weaponOutlineTransparency", value)
-end))
-window:addColorPicker("Weapon Chams Color", Color3.fromRGB(0, 255, 255), safeUi("Weapon Chams Color", function(value)
-    features.chams:SetSetting("weaponColor", value)
-end))
+-- ── ESP ───────────────────────────────────────────────────────────────
+espGrp:AddToggle("esp_enabled", {
+    Text = "ESP Enabled", Default = false,
+    Callback = safeUi("ESP Enabled", function(v) features.esp:SetSetting("enabled", v) end),
+})
+espGrp:AddToggle("esp_teamcheck", {
+    Text = "ESP Team Check", Default = false,
+    Callback = safeUi("ESP Team Check", function(v) features.esp:SetSetting("teamCheck", v) end),
+})
+espGrp:AddToggle("esp_showbox", {
+    Text = "ESP Show Box", Default = false,
+    Callback = safeUi("ESP Show Box", function(v) features.esp:SetSetting("showBox", v) end),
+})
+espGrp:AddToggle("esp_showhealth", {
+    Text = "ESP Show Health", Default = false,
+    Callback = safeUi("ESP Show Health", function(v) features.esp:SetSetting("showHealth", v) end),
+})
+espGrp:AddToggle("esp_showname", {
+    Text = "ESP Show Name", Default = false,
+    Callback = safeUi("ESP Show Name", function(v) features.esp:SetSetting("showName", v) end),
+})
+espGrp:AddToggle("esp_showdistance", {
+    Text = "ESP Show Distance", Default = false,
+    Callback = safeUi("ESP Show Distance", function(v) features.esp:SetSetting("showDistance", v) end),
+})
+espGrp:AddToggle("esp_showskeleton", {
+    Text = "ESP Show Skeleton", Default = false,
+    Callback = safeUi("ESP Show Skeleton", function(v) features.esp:SetSetting("showSkeleton", v) end),
+})
+espGrp:AddToggle("esp_showheaddot", {
+    Text = "ESP Show Head Dot", Default = false,
+    Callback = safeUi("ESP Show Head Dot", function(v) features.esp:SetSetting("showHeadDot", v) end),
+})
+espGrp:AddToggle("esp_showtracers", {
+    Text = "ESP Show Tracers", Default = false,
+    Callback = safeUi("ESP Show Tracers", function(v) features.esp:SetSetting("showTracers", v) end),
+})
+espGrp:AddToggle("esp_rainbow", {
+    Text = "ESP Rainbow", Default = false,
+    Callback = safeUi("ESP Rainbow", function(v) features.esp:SetSetting("rainbow", v) end),
+})
+espGrp:AddSlider("esp_rainbowspeed", {
+    Text = "ESP Rainbow Speed", Default = 2, Min = 0.1, Max = 10, Rounding = 1,
+    Callback = safeUi("ESP Rainbow Speed", function(v) features.esp:SetSetting("rainbowSpeed", v) end),
+})
+espGrp:AddSlider("esp_textsize", {
+    Text = "ESP Text Size", Default = 15, Min = 10, Max = 20, Rounding = 0,
+    Callback = safeUi("ESP Text Size", function(v) features.esp:SetSetting("textSize", v) end),
+})
+espGrp:AddSlider("esp_boxthickness", {
+    Text = "ESP Box Thickness", Default = 1.5, Min = 1, Max = 3, Rounding = 1,
+    Callback = safeUi("ESP Box Thickness", function(v) features.esp:SetSetting("boxThickness", v) end),
+})
+espGrp:AddSlider("esp_maxdistance", {
+    Text = "ESP Max Distance", Default = 0, Min = 0, Max = 500, Rounding = 0,
+    Callback = safeUi("ESP Max Distance", function(v) features.esp:SetSetting("maxDistance", v) end),
+})
 
---[[window:addSection("Bullet Tracers")
-window:addToggle("Bullet Tracers Enabled", false, safeUi("Bullet Tracers Enabled", function(value)
-    features.bulletTracers:SetSetting("enabled", value)
-end))
-window:addDropdown("Bullet Tracer Pattern", { "Straight", "Wave", "Spiral", "Dashed" }, "Straight", safeUi("Bullet Tracer Pattern", function(value)
-    features.bulletTracers:SetSetting("pattern", value)
-end))
-window:addSlider("Bullet Tracer Transparency", 0, 1, 0.3, 0.05, safeUi("Bullet Tracer Transparency", function(value)
-    features.bulletTracers:SetSetting("transparency", value)
-end))
-window:addSlider("Bullet Tracer Duration", 0.1, 2, 0.6, 0.1, safeUi("Bullet Tracer Duration", function(value)
-    features.bulletTracers:SetSetting("duration", value)
-end))
-window:addSlider("Bullet Tracer Thickness", 0.1, 1, 0.2, 0.05, safeUi("Bullet Tracer Thickness", function(value)
-    features.bulletTracers:SetSetting("thickness", value)
-end))
-window:addColorPicker("Bullet Tracer Color", Color3.fromRGB(0, 255, 255), safeUi("Bullet Tracer Color", function(value)
-    features.bulletTracers:SetSetting("color", value)
-end))]]
+espGrp:AddLabel("ESP Box Color"):AddColorPicker("esp_boxcolor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = safeUi("ESP Box Color", function(v) features.esp:SetSetting("boxColor", v) end),
+})
+espGrp:AddLabel("ESP Text Color"):AddColorPicker("esp_textcolor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = safeUi("ESP Text Color", function(v) features.esp:SetSetting("textColor", v) end),
+})
+espGrp:AddLabel("ESP Skeleton Color"):AddColorPicker("esp_skeletoncolor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = safeUi("ESP Skeleton Color", function(v) features.esp:SetSetting("skeletonColor", v) end),
+})
+espGrp:AddLabel("ESP Tracer Color"):AddColorPicker("esp_tracercolor", {
+    Default = Color3.fromRGB(255, 51, 153),
+    Callback = safeUi("ESP Tracer Color", function(v) features.esp:SetSetting("tracerColor", v) end),
+})
+espGrp:AddLabel("ESP Head Dot Color"):AddColorPicker("esp_headdotcolor", {
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = safeUi("ESP Head Dot Color", function(v) features.esp:SetSetting("headDotColor", v) end),
+})
 
---[[window:addSection("Particle Effects")
-window:addToggle("Particle Effects Enabled", false, safeUi("Particle Effects Enabled", function(value)
-    features.particleEffects:SetSetting("enabled", value)
-end))
-window:addSlider("Particle Amount", 5, 80, 25, 5, safeUi("Particle Amount", function(value)
-    features.particleEffects:SetSetting("amount", value)
-end))
-window:addSlider("Particle Lifetime", 0.3, 3, 1.2, 0.1, safeUi("Particle Lifetime", function(value)
-    features.particleEffects:SetSetting("lifetime", value)
-end))
-window:addDropdown("Particle Style", { "Spark", "Smoke", "Fire", "Explosion", "Magic" }, "Spark", safeUi("Particle Style", function(value)
-    features.particleEffects:SetSetting("style", value)
-end))
-window:addColorPicker("Particle Color", Color3.fromRGB(255, 100, 0), safeUi("Particle Color", function(value)
-    features.particleEffects:SetSetting("color", value)
-end))]]
+-- ── Chams ──────────────────────────────────────────────────────────────
+chamsGrp:AddToggle("chams_rainbow", {
+    Text = "Chams Rainbow", Default = false,
+    Callback = safeUi("Chams Rainbow", function(v) features.chams:SetSetting("rainbow", v) end),
+})
+chamsGrp:AddSlider("chams_rainbowspeed", {
+    Text = "Chams Rainbow Speed", Default = 2, Min = 0.1, Max = 10, Rounding = 1,
+    Callback = safeUi("Chams Rainbow Speed", function(v) features.chams:SetSetting("rainbowSpeed", v) end),
+})
+chamsGrp:AddToggle("chams_player_enabled", {
+    Text = "Player Chams Enabled", Default = false,
+    Callback = safeUi("Player Chams Enabled", function(v) features.chams:SetSetting("playerEnabled", v) end),
+})
+chamsGrp:AddToggle("chams_player_teamcheck", {
+    Text = "Player Chams Team Check", Default = false,
+    Callback = safeUi("Player Chams Team Check", function(v) features.chams:SetSetting("playerTeamCheck", v) end),
+})
+chamsGrp:AddToggle("chams_player_visibleonly", {
+    Text = "Visible Only", Default = false,
+    Callback = safeUi("Player Chams Visible Only", function(v) features.chams:SetSetting("playerVisibleOnly", v) end),
+})
+chamsGrp:AddSlider("chams_player_fill", {
+    Text = "Player Chams Fill", Default = 0.7, Min = 0, Max = 1, Rounding = 2,
+    Callback = safeUi("Player Chams Fill", function(v) features.chams:SetSetting("playerFillTransparency", v) end),
+})
+chamsGrp:AddSlider("chams_player_outline", {
+    Text = "Player Chams Outline", Default = 0, Min = 0, Max = 1, Rounding = 2,
+    Callback = safeUi("Player Chams Outline", function(v) features.chams:SetSetting("playerOutlineTransparency", v) end),
+})
+chamsGrp:AddLabel("Player Chams Color"):AddColorPicker("chams_player_color", {
+    Default = Color3.fromRGB(255, 0, 0),
+    Callback = safeUi("Player Chams Color", function(v) features.chams:SetSetting("playerColor", v) end),
+})
+chamsGrp:AddToggle("chams_weapon_enabled", {
+    Text = "Weapon Chams Enabled", Default = false,
+    Callback = safeUi("Weapon Chams Enabled", function(v) features.chams:SetSetting("weaponEnabled", v) end),
+})
+chamsGrp:AddSlider("chams_weapon_fill", {
+    Text = "Weapon Chams Fill", Default = 0.5, Min = 0, Max = 1, Rounding = 2,
+    Callback = safeUi("Weapon Chams Fill", function(v) features.chams:SetSetting("weaponFillTransparency", v) end),
+})
+chamsGrp:AddSlider("chams_weapon_outline", {
+    Text = "Weapon Chams Outline", Default = 0, Min = 0, Max = 1, Rounding = 2,
+    Callback = safeUi("Weapon Chams Outline", function(v) features.chams:SetSetting("weaponOutlineTransparency", v) end),
+})
+chamsGrp:AddLabel("Weapon Chams Color"):AddColorPicker("chams_weapon_color", {
+    Default = Color3.fromRGB(0, 255, 255),
+    Callback = safeUi("Weapon Chams Color", function(v) features.chams:SetSetting("weaponColor", v) end),
+})
 
-window:addSection("Kill Effects")
-window:addToggle("Kill Effects Enabled", false, safeUi("Kill Effects Enabled", function(value)
-    features.killEffects:SetSetting("enabled", value)
-end))
-window:addSlider("Kill Effect Duration", 0.3, 2, 0.8, 0.1, safeUi("Kill Effect Duration", function(value)
-    features.killEffects:SetSetting("duration", value)
-end))
-window:addSlider("Kill Effect Intensity", 0.2, 1, 0.6, 0.1, safeUi("Kill Effect Intensity", function(value)
-    features.killEffects:SetSetting("intensity", value)
-end))
-window:addColorPicker("Kill Effect Color", Color3.fromRGB(255, 0, 100), safeUi("Kill Effect Color", function(value)
-    features.killEffects:SetSetting("color", value)
-end))
+--[[ Bullet Tracers (commented in original)
+local bulletGrp = visualsTab:AddRightGroupbox("Bullet Tracers")
+...
+]]
 
-window:addSection("World Effects")
-window:addToggle("Anti Flash", false, safeUi("Anti Flash", function(value)
-    features.worldEffects:SetSetting("antiFlash", value)
-end))
-window:addToggle("Anti Smoke", false, safeUi("Anti Smoke", function(value)
-    features.worldEffects:SetSetting("antiSmoke", value)
-end))
+--[[ Particle Effects (commented in original)
+local particleGrp = visualsTab:AddRightGroupbox("Particle Effects")
+...
+]]
 
-do
-    local originalLoadConfig = window.loadConfig
-    function window:loadConfig(name)
-        local ok, err = originalLoadConfig(self, name)
-        if ok then
-            queueSkinchangerConfigSync()
-        end
-        return ok, err
+-- ── Kill Effects ──────────────────────────────────────────────────────
+killFxGrp:AddToggle("killfx_enabled", {
+    Text = "Kill Effects Enabled", Default = false,
+    Callback = safeUi("Kill Effects Enabled", function(v) features.killEffects:SetSetting("enabled", v) end),
+})
+killFxGrp:AddSlider("killfx_duration", {
+    Text = "Kill Effect Duration", Default = 0.8, Min = 0.3, Max = 2, Rounding = 1,
+    Callback = safeUi("Kill Effect Duration", function(v) features.killEffects:SetSetting("duration", v) end),
+})
+killFxGrp:AddSlider("killfx_intensity", {
+    Text = "Kill Effect Intensity", Default = 0.6, Min = 0.2, Max = 1, Rounding = 1,
+    Callback = safeUi("Kill Effect Intensity", function(v) features.killEffects:SetSetting("intensity", v) end),
+})
+killFxGrp:AddLabel("Kill Effect Color"):AddColorPicker("killfx_color", {
+    Default = Color3.fromRGB(255, 0, 100),
+    Callback = safeUi("Kill Effect Color", function(v) features.killEffects:SetSetting("color", v) end),
+})
+
+-- ── World Effects ─────────────────────────────────────────────────────
+worldFxGrp:AddToggle("worldfx_antiflash", {
+    Text = "Anti Flash", Default = false,
+    Callback = safeUi("Anti Flash", function(v) features.worldEffects:SetSetting("antiFlash", v) end),
+})
+worldFxGrp:AddToggle("worldfx_antismoke", {
+    Text = "Anti Smoke", Default = false,
+    Callback = safeUi("Anti Smoke", function(v) features.worldEffects:SetSetting("antiSmoke", v) end),
+})
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  CONFIG LOAD HOOK (sync skinchanger after loading a config)
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- The library's SaveManager fires OnChanged for each option when a config
+-- is loaded. We hook into that indirectly by piggybacking on the skin
+-- dropdowns. But for a guaranteed sync after config load, we patch
+-- SaveManager.LoadConfig.
+
+if SaveManager.LoadConfig then
+    local origLoadConfig = SaveManager.LoadConfig
+    function SaveManager:LoadConfig(name, ...)
+        local result = { origLoadConfig(self, name, ...) }
+        task.spawn(function()
+            task.wait(0.1)
+            pcall(queueSkinchangerConfigSync)
+        end)
+        return table.unpack(result)
     end
 end
 
-window:switchTab(configTab)
-window:addConfigManager("default")
+-- ═══════════════════════════════════════════════════════════════════════
+--  AUTOLOAD CONFIG (pinned via middle-click in Configs dropdown)
+-- ═══════════════════════════════════════════════════════════════════════
 
 task.defer(function()
-    local okList, configNames = pcall(function()
-        return window:listConfigs()
+    task.wait(0.3)
+    pcall(function()
+        SaveManager:LoadAutoloadConfig()
     end)
-    if not okList or type(configNames) ~= "table" or #configNames == 0 then
-        return
-    end
-
-    local selectedConfig = nil
-    local latestSavedAt = nil
-
-    for _, configName in ipairs(configNames) do
-        local normalizedName = tostring(configName):lower()
-        if normalizedName ~= "default" then
-            local payload = nil
-            pcall(function()
-                if window._readJsonFile and window._getConfigFilePath then
-                    payload = window:_readJsonFile(window:_getConfigFilePath(configName))
-                end
-            end)
-
-            local savedAt = type(payload) == "table"
-                and type(payload.meta) == "table"
-                and payload.meta.saved_at
-
-            if type(savedAt) == "string" and (not latestSavedAt or savedAt > latestSavedAt) then
-                latestSavedAt = savedAt
-                selectedConfig = configName
-            elseif not selectedConfig then
-                selectedConfig = configName
-            end
-        end
-    end
-
-    if selectedConfig then
-        pcall(function()
-            window:loadConfig(selectedConfig)
-        end)
-    end
 end)
 
-window:notify("Bloxtrike", "loaded.", nil, false)
+-- ═══════════════════════════════════════════════════════════════════════
+--  NOTIFICATION
+-- ═══════════════════════════════════════════════════════════════════════
+
+Library:Notify("Bloxtrike loaded.", 3)
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  RETURN (identical shape to original)
+-- ═══════════════════════════════════════════════════════════════════════
 
 return {
-    window = window,
+    window = Window,
     features = features,
 }
