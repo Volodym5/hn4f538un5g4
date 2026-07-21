@@ -1,4 +1,4 @@
-local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
+local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/"
 local WHITELIST_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/whitelist.lua"
 
 local function getFileName(path)
