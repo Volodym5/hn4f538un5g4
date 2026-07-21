@@ -48,7 +48,6 @@ if not httpGet and game and game.HttpGet then
 end
 
 local function loadLocal(relativePath)
-    -- [unchanged from original]
     local preloadedSources = bootstrap.moduleSources
     local baseUrl = bootstrap.baseUrl
     local cacheKey = relativePath
@@ -75,20 +74,15 @@ local function loadLocal(relativePath)
             if loadstring then
                 chunk, err = loadstring(source, "@" .. url)
             end
+        elseif ok then
+            err = string.format("HTTP fetch returned empty body for %q", url)
+        else
+            err = string.format("HTTP fetch failed for %q: %s", url, tostring(body))
         end
-    end
-
-    if not chunk and loadfile then
-        local path = joinPath(ROOT, relativePath)
-        chunk, err = loadfile(path)
-    end
-
-    if not chunk and readfile and loadstring then
-        local path = joinPath(ROOT, relativePath)
-        local ok, contents = pcall(readfile, path)
-        if ok and contents then
-            chunk, err = loadstring(contents, "@" .. path)
-        end
+    elseif not chunk and (not baseUrl or baseUrl == "") then
+        err = "No baseUrl provided and module not found in preloaded sources"
+    elseif not chunk and not httpGet then
+        err = "No HTTP GET method available to fetch " .. relativePath
     end
 
     assert(chunk, err or ("Failed to load module: " .. tostring(relativePath)))
