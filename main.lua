@@ -1,3 +1,7 @@
+-- ============================================
+-- COMBINED LOADER + MAIN SCRIPT
+-- ============================================
+
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
 
 local function getFileName(path)
@@ -250,7 +254,6 @@ end
 local httpGet = getHttpGet()
 local loadingOverlay = createLoadingOverlay("Fetching script files...")
 local files = {
-    "main.lua",
     "ui_lib.lua",
     "src/shared/Cleaner.lua",
     "src/shared/ErrorHandler.lua",
@@ -271,7 +274,6 @@ local files = {
     "src/features/visuals/KillEffects.lua",
     "src/features/visuals/WorldEffects.lua",
 }
-
 
 local MAX_CONCURRENT_FETCHES = 4
 
@@ -354,21 +356,12 @@ local function fetchFilesInBatches(fileList, fetcher)
     return sources
 end
 
-local ok, result = xpcall(function()
-    local sources = fetchFilesInBatches(files, httpGet)
-
-    loadingOverlay.dismiss()
-
-    local mainChunk = assert(loadstring(sources["main.lua"], "@loader/main.lua"))
-    return mainChunk({
-        baseUrl = DEFAULT_BASE_URL,
-        moduleSources = sources,
-    })
+local ok, sources = xpcall(function()
+    return fetchFilesInBatches(files, httpGet)
 end, function(err)
     if debug and debug.traceback then
         return tostring(err) .. "\n" .. debug.traceback()
     end
-
     return tostring(err)
 end)
 
@@ -376,13 +369,19 @@ if not ok then
     pcall(function()
         loadingOverlay.dismiss()
     end)
-    kickOnFatal(result)
+    kickOnFatal(sources)
 end
 
-local bootstrap = result
-if type(bootstrap) ~= "table" then
-    bootstrap = {}
-end
+loadingOverlay.dismiss()
+
+local bootstrap = {
+    baseUrl = DEFAULT_BASE_URL,
+    moduleSources = sources,
+}
+
+-- ============================================
+-- MAIN SCRIPT STARTS HERE
+-- ============================================
 
 local function normalizePath(path)
     return tostring(path or ""):gsub("\\", "/")
@@ -414,19 +413,6 @@ end
 
 local ROOT = getRootPath()
 local moduleCache = {}
-local httpGet = (syn and syn.request and function(url)
-    local response = syn.request({ Url = url, Method = "GET" })
-    return response and response.Body
-end) or (http and http.request and function(url)
-    local response = http.request({ Url = url, Method = "GET" })
-    return response and response.Body
-end)
-
-if not httpGet and game and game.HttpGet then
-    httpGet = function(url)
-        return game:HttpGet(url)
-    end
-end
 
 local function loadLocal(relativePath)
     local preloadedSources = bootstrap.moduleSources
