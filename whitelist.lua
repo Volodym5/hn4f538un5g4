@@ -1,2 +1,5 @@
-"madium"
-"xeno"
+return {
+  "Madium",
+  "Xeno",
+  "Solara",
+};
