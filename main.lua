@@ -249,11 +249,13 @@ end
 
 local httpGet = getHttpGet()
 
--- ─── WHITELIST REMOVED ───
+-- ─── WHITELIST FULLY REMOVED ───
 
 local loadingOverlay = createLoadingOverlay("Fetching script files...")
+
+-- NOTE: "main.lua" is intentionally removed from this list.
+-- This combined script IS main.lua, no need to fetch itself.
 local files = {
-    "main.lua",
     "ui_lib.lua",
     "src/shared/Cleaner.lua",
     "src/shared/ErrorHandler.lua",
@@ -374,12 +376,13 @@ local ok, result = xpcall(function()
         assert(type(source) == "string" and source ~= "",
             "Failed to load module: " .. tostring(relativePath))
 
-        local chunk, err = loadstring(source, "@" .. relativePath)
-        assert(chunk, err or "Failed to compile: " .. relativePath)
+        local chunk, compileErr = loadstring(source, "@" .. relativePath)
+        assert(chunk, compileErr or "Failed to compile: " .. relativePath)
 
-        local result = chunk()
-        moduleCache[relativePath] = result
-        return result
+        local okRun, runResult = pcall(chunk)
+        assert(okRun, tostring(runResult))
+        moduleCache[relativePath] = runResult
+        return runResult
     end
 
     -- Shared modules
