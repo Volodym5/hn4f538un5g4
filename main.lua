@@ -1,3 +1,7 @@
+-- ============================================
+-- COMBINED LOADER + MAIN SCRIPT
+-- ============================================
+
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main"
 local WHITELIST_URL = "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/whitelist.lua"
 
@@ -305,6 +309,7 @@ local httpGet = getHttpGet()
 runExecutorWhitelist(httpGet)
 local loadingOverlay = createLoadingOverlay("Fetching script files...")
 local files = {
+    "main.lua",
     "ui_lib.lua",
     "src/shared/Cleaner.lua",
     "src/shared/ErrorHandler.lua",
@@ -413,6 +418,11 @@ local ok, result = xpcall(function()
 
     loadingOverlay.dismiss()
 
+    local mainChunk = assert(loadstring(sources["main.lua"], "@loader/main.lua"))
+    return mainChunk({
+        baseUrl = DEFAULT_BASE_URL,
+        moduleSources = sources,
+    })
 end, function(err)
     if debug and debug.traceback then
         return tostring(err) .. "\n" .. debug.traceback()
@@ -428,9 +438,7 @@ if not ok then
     kickOnFatal(result)
 end
 
-return result
-
-local bootstrap = ...
+local bootstrap = result
 if type(bootstrap) ~= "table" then
     bootstrap = {}
 end
