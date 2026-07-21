@@ -184,7 +184,7 @@ appCleaner:Give(errorHandler:Connect(Services.RunService.Heartbeat, "Main Moveme
 end))
 
 -- ── UI LIBRARY SETUP ───────────────────────────────────────────────────
-local Library = loadLocal("ui_lib/source.lua")
+local Library = loadLocal("ui_lib.lua")
 local SaveManager = Library.SaveManager
 
 SaveManager:SetLibrary(Library)
