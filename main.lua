@@ -47,15 +47,6 @@ if not httpGet and game and game.HttpGet then
     end
 end
 
--- ── Preload the new UI library source through the bootstrapper ──────────
-if httpGet then
-    local ok, body = pcall(httpGet, "https://raw.githubusercontent.com/Volodym5/hn4f538un5g4/main/ui_lib.lua")
-    if ok and type(body) == "string" and body ~= "" then
-        bootstrap.moduleSources = bootstrap.moduleSources or {}
-        bootstrap.moduleSources["ui_lib/source.lua"] = body
-    end
-end
-
 local function loadLocal(relativePath)
     -- [unchanged from original]
     local preloadedSources = bootstrap.moduleSources
