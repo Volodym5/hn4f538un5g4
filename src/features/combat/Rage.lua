@@ -112,10 +112,19 @@ function Rage.new(context)
     self._silentAimDebugThrottle = 0
     self._cachedExcludeList = {}
     self._lastExcludeUpdate = 0
+    -- ═══════════════════════════════════════════════
+    -- FIX: Add rage fire timers
+    self._lastRageFire = 0
+    self._lastRageTargetCheck = 0
+    -- ═══════════════════════════════════════════════
 
     self.settings = {
         rageMode = false,
         rageToggleKey = Enum.KeyCode.Unknown,
+        -- ═══════════════════════════════════════════════
+        -- FIX: Add rage fire rate setting (ms between shots)
+        rageFireRate = 80,
+        -- ═══════════════════════════════════════════════
 
         silentAim = false,
         silentAimToggleKey = Enum.KeyCode.Unknown,
@@ -481,6 +490,55 @@ function Rage:_getTargetData(maxFov)
     end
 
     return best
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- FIX: NEW RAGE AUTO-SHOOT METHOD
+-- Uses the SAME _getTargetData() as silent aim, so it automatically
+-- inherits: targetPart, teamCheck, wallbang/aimWallCheck, fullFov360
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_updateRageMode()
+    if not self.settings.rageMode then
+        self._lastRageFire = 0
+        return
+    end
+
+    -- Use the same FOV logic: if fullFov360 is on, use 9999 radius
+    local fov = self.settings.fullFov360 and 9999 or (self.settings.fovSize or 150)
+    local target = self:_getTargetData(fov)
+    if not target then
+        self._lastRageFire = 0
+        return
+    end
+
+    -- Fire rate control
+    local fireRateMs = tonumber(self.settings.rageFireRate) or 80
+    local now = tick()
+
+    if self._lastRageFire == 0 then
+        -- First valid target: fire immediately, no delay
+        self._lastRageFire = now
+        -- ════════════════════════════════════
+        -- FIX: Fire immediately on first target
+        -- ════════════════════════════════════
+        if mouse1click then
+            pcall(mouse1click)
+        end
+        return
+    end
+
+    if (now - self._lastRageFire) < (fireRateMs / 1000) then
+        return
+    end
+
+    self._lastRageFire = now
+
+    -- ═══════════════════════════════════════════
+    -- Fire at target (same pattern as autoClicker)
+    -- ═══════════════════════════════════════════
+    if mouse1click then
+        pcall(mouse1click)
+    end
 end
 
 function Rage:_applyAim(target, strengthScale)
@@ -988,6 +1046,9 @@ function Rage:_installSilentAimHooks()
     return true
 end
 
+-- ═══════════════════════════════════════════════════════════════════
+-- FIX: Tick() now calls _updateRageMode
+-- ═══════════════════════════════════════════════════════════════════
 function Rage:Tick(dt)
     if not self:_isActive() then
         self:_updateFovCircles()
@@ -995,6 +1056,10 @@ function Rage:Tick(dt)
     end
 
     self:_updateFovCircles()
+    -- ══════════════════════════════════════
+    -- FIX: Rage auto-shoot runs every frame
+    self:_updateRageMode()
+    -- ══════════════════════════════════════
     self:_updateAimlock(dt or 0.016)
     self:_updateRcs(dt or 0.016)
     self:_updateAutoClick()
@@ -1182,6 +1247,16 @@ end
 
 function Rage:SetRageMode(value)
     self.settings.rageMode = value == true
+end
+
+-- ═══════════════════════════════════════════════
+-- FIX: New setter for rage fire rate
+-- ═══════════════════════════════════════════════
+function Rage:SetRageFireRate(value)
+    local number = tonumber(value)
+    if number then
+        self.settings.rageFireRate = math.clamp(number, 10, 500)
+    end
 end
 
 function Rage:SetRageToggleKey(value)
