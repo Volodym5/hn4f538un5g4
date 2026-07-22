@@ -1152,7 +1152,17 @@ function Rage:_installSilentAimHooks()
                 return baseResult
             end
 
-            local target = self:_getTargetData(self.settings.fovSize)
+            local target = nil
+            if self.settings.rageMode and self._rageTarget then
+                target = {
+                    pos = self._rageTarget.aimPos,
+                    part = self._rageTarget.part,
+                    model = self._rageTarget.model,
+                }
+            else
+                target = self:_getTargetData(self.settings.fovSize)
+            end
+
             if not target then
                 return baseResult
             end
