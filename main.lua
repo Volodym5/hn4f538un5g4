@@ -91,6 +91,16 @@ local function safeUi(label, fn)
 end
 
 -- ============================================================
+-- HELPER: Replace dropdown options at runtime via SetValues
+-- ============================================================
+local function setDropdownValues(optionId, newValues, newDefault)
+    local opt = Library.Options[optionId]
+    if not opt then return end
+    pcall(opt.SetValues, opt, newValues)
+    pcall(opt.SetValue, opt, newDefault)
+end
+
+-- ============================================================
 -- WINDOW
 -- ============================================================
 local Window = Library:CreateWindow({
@@ -340,29 +350,25 @@ skinBox:AddToggle("skinchanger_KnifeEnabled", {
     Callback = safeUi("Knife Changer Enabled", function(v) features.skinchanger:SetKnifeChangerEnabled(v) end),
 })
 
-local _lastKnifeSkinValues = features.skinchanger:GetSkinOptions(features.skinchanger:GetKnifeModel())
-local _lastGloveSkinValues = features.skinchanger:GetGloveSkinOptions(
-    features.skinchanger:GetGloveModel() or features.skinchanger:GetGloveModels()[1] or "Default"
-)
-
+-- Knife Model dropdown — when it changes, swap the Knife Skin dropdown options
+local knifeModelDefault = features.skinchanger:GetKnifeModel()
 skinBox:AddDropdown("skinchanger_KnifeModel", {
     Text = "Knife Model",
-    Default = features.skinchanger:GetKnifeModel(),
+    Default = knifeModelDefault,
     Values  = features.skinchanger:GetKnifeModels(),
     Callback = safeUi("Knife Model", function(value)
         features.skinchanger:SetKnifeModel(value)
         local newOptions = features.skinchanger:GetSkinOptions(value)
-        Library.Options["skinchanger_KnifeSkin"]:RemoveValues(_lastKnifeSkinValues)
-        Library.Options["skinchanger_KnifeSkin"]:AddValues(newOptions)
-        Library.Options["skinchanger_KnifeSkin"]:SetValue(features.skinchanger:GetWeaponSkin(value))
-        _lastKnifeSkinValues = newOptions
+        local newDefault = features.skinchanger:GetWeaponSkin(value)
+        setDropdownValues("skinchanger_KnifeSkin", newOptions, newDefault)
     end),
 })
 
+-- Knife Skin dropdown — starts with options for the default knife model
 skinBox:AddDropdown("skinchanger_KnifeSkin", {
     Text = "Knife Skin",
-    Default = features.skinchanger:GetWeaponSkin(features.skinchanger:GetKnifeModel()),
-    Values  = _lastKnifeSkinValues,
+    Default = features.skinchanger:GetWeaponSkin(knifeModelDefault),
+    Values  = features.skinchanger:GetSkinOptions(knifeModelDefault),
     Callback = safeUi("Knife Skin", function(value)
         features.skinchanger:SetWeaponSkin(features.skinchanger:GetKnifeModel(), value)
     end),
@@ -373,6 +379,7 @@ skinBox:AddToggle("skinchanger_GloveEnabled", {
     Callback = safeUi("Glove Changer Enabled", function(v) features.skinchanger:SetGloveChangerEnabled(v) end),
 })
 
+-- Glove Model dropdown — cascades into Glove Skin
 local gloveModels = features.skinchanger:GetGloveModels()
 local defaultGloveModel = features.skinchanger:GetGloveModel() or gloveModels[1] or "Default"
 
@@ -383,17 +390,15 @@ skinBox:AddDropdown("skinchanger_GloveModel", {
     Callback = safeUi("Glove Model", function(value)
         features.skinchanger:SetGloveModel(value)
         local newOptions = features.skinchanger:GetGloveSkinOptions(value)
-        Library.Options["skinchanger_GloveSkin"]:RemoveValues(_lastGloveSkinValues)
-        Library.Options["skinchanger_GloveSkin"]:AddValues(newOptions)
-        Library.Options["skinchanger_GloveSkin"]:SetValue(features.skinchanger:GetGloveSkin(value))
-        _lastGloveSkinValues = newOptions
+        local newDefault = features.skinchanger:GetGloveSkin(value)
+        setDropdownValues("skinchanger_GloveSkin", newOptions, newDefault)
     end),
 })
 
 skinBox:AddDropdown("skinchanger_GloveSkin", {
     Text = "Glove Skin",
     Default = features.skinchanger:GetGloveSkin(defaultGloveModel),
-    Values  = _lastGloveSkinValues,
+    Values  = features.skinchanger:GetGloveSkinOptions(defaultGloveModel),
     Callback = safeUi("Glove Skin", function(value)
         features.skinchanger:SetGloveSkin(value)
     end),
@@ -408,12 +413,10 @@ skinBox:AddButton({
     Text = "Apply Skin Changes",
     Func = safeUi("Apply Skin Changes", function()
         features.skinchanger:ApplyNow()
+        -- Refresh knife skin dropdown after apply (skins may update)
         local km = features.skinchanger:GetKnifeModel()
         local refreshed = features.skinchanger:GetSkinOptions(km)
-        Library.Options["skinchanger_KnifeSkin"]:RemoveValues(_lastKnifeSkinValues)
-        Library.Options["skinchanger_KnifeSkin"]:AddValues(refreshed)
-        Library.Options["skinchanger_KnifeSkin"]:SetValue(features.skinchanger:GetWeaponSkin(km))
-        _lastKnifeSkinValues = refreshed
+        setDropdownValues("skinchanger_KnifeSkin", refreshed, features.skinchanger:GetWeaponSkin(km))
     end),
 })
 
