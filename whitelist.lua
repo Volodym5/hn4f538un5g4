@@ -1,5 +1,0 @@
-return {
-  "Madium",
-  "Xeno",
-  "Solara",
-};
