@@ -112,19 +112,30 @@ function Rage.new(context)
     self._silentAimDebugThrottle = 0
     self._cachedExcludeList = {}
     self._lastExcludeUpdate = 0
-    -- ═══════════════════════════════════════════════
-    -- FIX: Add rage fire timers
+
+    -- ═══════════════════════════════════════════════════════
+    -- RAGE BOT STATE
     self._lastRageFire = 0
-    self._lastRageTargetCheck = 0
-    -- ═══════════════════════════════════════════════
+    self._rageTarget = nil
+    self._rageBurstState = nil
+    -- ═══════════════════════════════════════════════════════
 
     self.settings = {
         rageMode = false,
         rageToggleKey = Enum.KeyCode.Unknown,
-        -- ═══════════════════════════════════════════════
-        -- FIX: Add rage fire rate setting (ms between shots)
-        rageFireRate = 80,
-        -- ═══════════════════════════════════════════════
+        -- ═══════════════════════════════════════════════════
+        -- RAGE BOT SETTINGS
+        rageFireRate = 1,               -- 1ms = max speed
+        ragePrediction = true,           -- lead moving targets
+        ragePredictionAmount = 0.9,      -- how much to lead
+        ragePartBias = "Smart",          -- "Smart" | "Head" | "Nearest" | "Random"
+        rageTargetPriority = "Distance", -- "Distance" | "LowestHealth" | "Crosshair"
+        rageKillSwitch = true,           -- instant swap on kill
+        rageBurstMode = false,
+        rageBurstCount = 3,
+        rageBurstDelay = 15,
+        rageMaxRange = 10000,            -- max engagement distance
+        -- ═══════════════════════════════════════════════════
 
         silentAim = false,
         silentAimToggleKey = Enum.KeyCode.Unknown,
@@ -231,7 +242,6 @@ function Rage:_isLocalPlayerModel(model)
         return false
     end
 
-    -- Check if the model or any of its ancestors has the player's name
     local current = model
     while current do
         if current.Name == player.Name then
@@ -240,12 +250,10 @@ function Rage:_isLocalPlayerModel(model)
         current = current.Parent
     end
 
-    -- Also check if it's the actual Character property
     if model == player.Character then
         return true
     end
 
-    -- Check Humanoid as fallback
     local character = player.Character
     if character then
         local modelHumanoid = model:FindFirstChildOfClass("Humanoid")
@@ -262,19 +270,301 @@ function Rage:_isSpawnProtected(model)
     if not model then
         return true
     end
-    
-    -- Check for Invincible attribute on the character model
     if model:GetAttribute("Invincible") == true then
         return true
     end
-    
-    -- Check humanoid health
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     if humanoid and humanoid.Health <= 0 then
         return true
     end
-    
     return false
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RAGE BOT: Smart part selection — always tries Head first,
+-- falls through body parts, no visibility checks.
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_rageGetBestPart(model)
+    if not model then return nil, "None" end
+
+    local bias = self.settings.ragePartBias or "Smart"
+
+    if bias == "Smart" then
+        local partsToTry = {
+            { model:FindFirstChild("Head"), "Head" },
+            { model:FindFirstChild("UpperTorso"), "UpperTorso" },
+            { model:FindFirstChild("LowerTorso"), "LowerTorso" },
+            { model:FindFirstChild("HumanoidRootPart"), "HumanoidRootPart" },
+        }
+        for _, entry in ipairs(partsToTry) do
+            if entry[1] and entry[1]:IsA("BasePart") then
+                return entry[1], entry[2]
+            end
+        end
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("BasePart") then
+                return child, child.Name
+            end
+        end
+        return nil, "None"
+    end
+
+    if bias == "Head" then
+        local head = model:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then return head, "Head" end
+        local ut = model:FindFirstChild("UpperTorso")
+        if ut and ut:IsA("BasePart") then return ut, "UpperTorso" end
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("BasePart") then return child, child.Name end
+        end
+        return nil, "None"
+    end
+
+    if bias == "Nearest" then
+        local camera = self:_getCamera()
+        local origin = camera and camera.CFrame.Position or Vector3.zero
+        local bestPart, bestName, bestDist = nil, "None", math.huge
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("BasePart") then
+                local dist = (child.Position - origin).Magnitude
+                if dist < bestDist then
+                    bestPart, bestName, bestDist = child, child.Name, dist
+                end
+            end
+        end
+        if not bestPart then
+            local head = model:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then return head, "Head" end
+        end
+        return bestPart, bestName
+    end
+
+    if bias == "Random" then
+        local parts = {}
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("BasePart") then
+                parts[#parts + 1] = child
+            end
+        end
+        if #parts > 0 then
+            local chosen = parts[math.random(1, #parts)]
+            return chosen, chosen.Name
+        end
+        local head = model:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then return head, "Head" end
+        return nil, "None"
+    end
+
+    local head = model:FindFirstChild("Head") or model:FindFirstChild("UpperTorso") or model:FindFirstChildOfClass("BasePart")
+    if not head then return nil, "None" end
+    return head, head.Name
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RAGE BOT: Movement prediction — leads moving targets so silent aim
+-- lands on where they WILL be, not where they ARE.
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_ragePredictPosition(part, distance)
+    if not self.settings.ragePrediction then
+        return part.Position
+    end
+    if not part or not part:IsA("BasePart") then
+        return part and part.Position or Vector3.zero
+    end
+    local vel = part.AssemblyLinearVelocity or Vector3.zero
+    local speed = vel.Magnitude
+    if speed < 3 then
+        return part.Position
+    end
+    -- Approximate bullet travel time
+    local bulletSpeed = 2000
+    local travelTime = distance / math.max(bulletSpeed, 100)
+    local predAmount = tonumber(self.settings.ragePredictionAmount) or 0.9
+    return part.Position + vel * travelTime * predAmount
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RAGE BOT: Target acquisition — completely independent from silent aim.
+-- No team check, no wall check, no FOV limit. Everyone is a target.
+-- 360° always. Prioritizes smartly.
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_rageGetTarget()
+    local camera = self:_getCamera()
+    if not camera then return nil end
+
+    local origin = camera.CFrame.Position
+    local maxDist = tonumber(self.settings.rageMaxRange) or 10000
+
+    -- Get ALL models — no team filtering
+    local characters = self.globals:GetTargetModels(false)
+    if not characters or #characters == 0 then
+        return nil
+    end
+
+    local candidates = {}
+    local priority = self.settings.rageTargetPriority or "Distance"
+
+    for _, model in ipairs(characters) do
+        -- Only skip ourselves
+        if self:_isLocalPlayerModel(model) then
+            continue
+        end
+
+        -- Skip dead / invincible
+        if self:_isSpawnProtected(model) then
+            continue
+        end
+
+        local humanoid = model:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then
+            continue
+        end
+
+        -- Smart part selection — no visibility check (shoot through everything)
+        local part, partName = self:_rageGetBestPart(model)
+        if not part then
+            continue
+        end
+
+        local distance = (part.Position - origin).Magnitude
+        if distance > maxDist then
+            continue
+        end
+
+        -- Predict where the target will be
+        local aimPos = self:_ragePredictPosition(part, distance)
+
+        -- Score the target
+        local score = 0
+        if priority == "Distance" then
+            score = distance
+        elseif priority == "LowestHealth" then
+            score = humanoid.Health * 10 + distance * 0.01
+        elseif priority == "Crosshair" then
+            local viewportPos, onScreen = camera:WorldToViewportPoint(aimPos)
+            local center = self:_getAimCenter()
+            local screenDist = center and (Vector2.new(viewportPos.X, viewportPos.Y) - center).Magnitude or distance
+            score = screenDist * 2 + distance * 0.01
+        end
+
+        candidates[#candidates + 1] = {
+            model = model,
+            part = part,
+            aimPos = aimPos,
+            partName = partName,
+            humanoid = humanoid,
+            distance = distance,
+            score = score,
+        }
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    -- Sort by score ascending (lower = better)
+    table.sort(candidates, function(a, b)
+        return a.score < b.score
+    end)
+
+    -- Kill switch: if current target is dead, instantly swap to best
+    if self.settings.rageKillSwitch and self._rageTarget and self._rageTarget.model then
+        local currentHull = self._rageTarget.model:FindFirstChildOfClass("Humanoid")
+        if currentHull and currentHull.Health <= 0 then
+            return candidates[1]
+        end
+    end
+
+    -- Stay on current target if alive (prevents flickering between equal targets)
+    if self._rageTarget and self._rageTarget.model then
+        local currentHull = self._rageTarget.model:FindFirstChildOfClass("Humanoid")
+        if currentHull and currentHull.Health > 0 then
+            -- Only switch if the new target is significantly better (>40% better score)
+            if #candidates > 0 and candidates[1].score < self._rageTarget.score * 0.6 then
+                return candidates[1]
+            end
+            -- Re-acquire current target with fresh position data
+            local part, partName = self:_rageGetBestPart(self._rageTarget.model)
+            if part then
+                self._rageTarget.part = part
+                self._rageTarget.partName = partName
+                self._rageTarget.aimPos = self:_ragePredictPosition(part, (part.Position - origin).Magnitude)
+                self._rageTarget.distance = (part.Position - origin).Magnitude
+                return self._rageTarget
+            end
+        end
+    end
+
+    return candidates[1]
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RAGE BOT: Auto-fire — supports both full-auto and burst modes
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_rageFire()
+    if self.settings.rageBurstMode then
+        if not self._rageBurstState then
+            self._rageBurstState = { count = 0, lastShot = 0 }
+        end
+        
+        local now = tick()
+        local burstRate = (self.settings.rageBurstDelay or 15) / 1000
+        local maxBurst = self.settings.rageBurstCount or 3
+        
+        if self._rageBurstState.count >= maxBurst then
+            if (now - self._rageBurstState.lastShot) < 0.1 then
+                return
+            end
+            self._rageBurstState.count = 0
+        end
+        
+        if (now - self._rageBurstState.lastShot) >= burstRate then
+            self._rageBurstState.lastShot = now
+            self._rageBurstState.count = self._rageBurstState.count + 1
+            if mouse1click then pcall(mouse1click) end
+        end
+    else
+        if mouse1click then pcall(mouse1click) end
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RAGE BOT: Main loop — called every render frame from Tick()
+-- ═══════════════════════════════════════════════════════════════════
+function Rage:_updateRageMode()
+    if not self.settings.rageMode then
+        self._rageTarget = nil
+        self._lastRageFire = 0
+        self._rageBurstState = nil
+        return
+    end
+
+    -- Acquire best target (no team check, no wall check, 360°, everyone)
+    local target = self:_rageGetTarget()
+    if not target then
+        self._rageTarget = nil
+        self._lastRageFire = 0
+        return
+    end
+
+    self._rageTarget = target
+
+    -- Fire as fast as the fire rate allows (default 1ms = every frame)
+    local fireRateMs = tonumber(self.settings.rageFireRate) or 1
+    local now = tick()
+
+    if self._lastRageFire == 0 then
+        self._lastRageFire = now
+        self:_rageFire()
+        return
+    end
+
+    if (now - self._lastRageFire) < (fireRateMs / 1000) then
+        return
+    end
+
+    self._lastRageFire = now
+    self:_rageFire()
 end
 
 function Rage:_getTargetPart(model)
@@ -339,7 +629,6 @@ end
 
 function Rage:_buildExcludeList(camera)
     local now = tick()
-    -- Cache exclude list for 0.5 seconds to improve performance
     if self._lastExcludeUpdate and (now - self._lastExcludeUpdate) < 0.5 and #self._cachedExcludeList > 0 then
         return self._cachedExcludeList
     end
@@ -347,12 +636,10 @@ function Rage:_buildExcludeList(camera)
     local ignore = {}
     local player = self.player or (self.globals and self.globals:GetPlayer())
     
-    -- Add camera
     if camera then
         ignore[#ignore + 1] = camera
     end
 
-    -- Exclude local player character and all its parts
     if player then
         local character = player.Character
         if character then
@@ -362,7 +649,6 @@ function Rage:_buildExcludeList(camera)
                     ignore[#ignore + 1] = descendant
                 end
             end
-            -- Exclude tools held by local player
             for _, tool in ipairs(character:GetChildren()) do
                 if tool:IsA("Tool") then
                     ignore[#ignore + 1] = tool
@@ -375,7 +661,6 @@ function Rage:_buildExcludeList(camera)
             end
         end
 
-        -- Search for player character in Characters folder
         local charactersFolder = self.workspace:FindFirstChild("Characters")
         if charactersFolder then
             for _, teamFolder in ipairs(charactersFolder:GetChildren()) do
@@ -393,7 +678,6 @@ function Rage:_buildExcludeList(camera)
         end
     end
 
-    -- Exclude all non-collidable and special folders
     local function excludeFolder(folderName)
         local folder = self.workspace:FindFirstChild(folderName)
         if folder then
@@ -413,7 +697,6 @@ function Rage:_buildExcludeList(camera)
     excludeFolder("Hitboxes")
     excludeFolder("RaycastVisualizers")
 
-    -- Add all non-collidable parts in workspace
     for _, obj in ipairs(self.workspace:GetDescendants()) do
         if obj:IsA("BasePart") and not obj.CanCollide then
             ignore[#ignore + 1] = obj
@@ -443,7 +726,6 @@ function Rage:_getTargetData(maxFov)
             continue
         end
         
-        -- Skip spawn protected players
         if self:_isSpawnProtected(model) then
             continue
         end
@@ -454,25 +736,19 @@ function Rage:_getTargetData(maxFov)
             if part then
                 local worldPos, onScreen = camera:WorldToViewportPoint(part.Position)
                 
-                -- Calculate distance from center (FOV check)
                 local screenDist = self.settings.fullFov360 
-                    and 0  -- Always within FOV if 360 mode
+                    and 0
                     or (onScreen and (Vector2.new(worldPos.X, worldPos.Y) - center).Magnitude or math.huge)
                 
-                -- Skip targets outside FOV
                 if screenDist > maxFovRadius then
                     continue
                 end
                 
-                -- Check visibility
                 if not self:_isTargetVisible(part, model) then
                     continue
                 end
                 
-                -- Calculate actual 3D distance (prioritize closest threat)
                 local actualDistance = (part.Position - camera.CFrame.Position).Magnitude
-                
-                -- Smart scoring: prioritize closer targets that are also near crosshair
                 local score = actualDistance * (1 + screenDist / maxFovRadius * 2)
                 
                 if score < bestScore then
@@ -490,55 +766,6 @@ function Rage:_getTargetData(maxFov)
     end
 
     return best
-end
-
--- ═══════════════════════════════════════════════════════════════════
--- FIX: NEW RAGE AUTO-SHOOT METHOD
--- Uses the SAME _getTargetData() as silent aim, so it automatically
--- inherits: targetPart, teamCheck, wallbang/aimWallCheck, fullFov360
--- ═══════════════════════════════════════════════════════════════════
-function Rage:_updateRageMode()
-    if not self.settings.rageMode then
-        self._lastRageFire = 0
-        return
-    end
-
-    -- Use the same FOV logic: if fullFov360 is on, use 9999 radius
-    local fov = self.settings.fullFov360 and 9999 or (self.settings.fovSize or 150)
-    local target = self:_getTargetData(fov)
-    if not target then
-        self._lastRageFire = 0
-        return
-    end
-
-    -- Fire rate control
-    local fireRateMs = tonumber(self.settings.rageFireRate) or 80
-    local now = tick()
-
-    if self._lastRageFire == 0 then
-        -- First valid target: fire immediately, no delay
-        self._lastRageFire = now
-        -- ════════════════════════════════════
-        -- FIX: Fire immediately on first target
-        -- ════════════════════════════════════
-        if mouse1click then
-            pcall(mouse1click)
-        end
-        return
-    end
-
-    if (now - self._lastRageFire) < (fireRateMs / 1000) then
-        return
-    end
-
-    self._lastRageFire = now
-
-    -- ═══════════════════════════════════════════
-    -- Fire at target (same pattern as autoClicker)
-    -- ═══════════════════════════════════════════
-    if mouse1click then
-        pcall(mouse1click)
-    end
 end
 
 function Rage:_applyAim(target, strengthScale)
@@ -955,7 +1182,6 @@ function Rage:_installSilentAimHooks()
                 end
             end)
 
-            -- Build comprehensive exclude list
             local params = RaycastParams.new()
             params.IgnoreWater = false
             params.FilterType = Enum.RaycastFilterType.Exclude
@@ -971,20 +1197,17 @@ function Rage:_installSilentAimHooks()
             if raycast then
                 local hitModel = raycast.Instance:FindFirstAncestorOfClass("Model")
                 if hitModel == target.model or raycast.Instance:IsDescendantOf(target.model) then
-                    -- We hit the intended target
                     hitPos = raycast.Position
                     hitInstance = raycast.Instance
                     hitMaterial = raycast.Material.Name
                     hitNormal = raycast.Normal
                 else
-                    -- We hit something else (wall, etc.) - try to force hit the target
                     hitPos = target.part.Position
                     hitInstance = target.part
                     hitMaterial = "Plastic"
                     hitNormal = (origin - hitPos).Unit
                 end
             else
-                -- No hit at all, use target position
                 hitPos = target.part.Position
                 hitInstance = target.part
                 hitMaterial = "Plastic"
@@ -1047,7 +1270,7 @@ function Rage:_installSilentAimHooks()
 end
 
 -- ═══════════════════════════════════════════════════════════════════
--- FIX: Tick() now calls _updateRageMode
+-- Tick() — calls rage bot update every frame
 -- ═══════════════════════════════════════════════════════════════════
 function Rage:Tick(dt)
     if not self:_isActive() then
@@ -1056,10 +1279,7 @@ function Rage:Tick(dt)
     end
 
     self:_updateFovCircles()
-    -- ══════════════════════════════════════
-    -- FIX: Rage auto-shoot runs every frame
-    self:_updateRageMode()
-    -- ══════════════════════════════════════
+    self:_updateRageMode()       -- rage bot runs first every frame
     self:_updateAimlock(dt or 0.016)
     self:_updateRcs(dt or 0.016)
     self:_updateAutoClick()
@@ -1249,18 +1469,67 @@ function Rage:SetRageMode(value)
     self.settings.rageMode = value == true
 end
 
--- ═══════════════════════════════════════════════
--- FIX: New setter for rage fire rate
--- ═══════════════════════════════════════════════
 function Rage:SetRageFireRate(value)
     local number = tonumber(value)
     if number then
-        self.settings.rageFireRate = math.clamp(number, 10, 500)
+        self.settings.rageFireRate = math.clamp(number, 1, 500)
     end
 end
 
 function Rage:SetRageToggleKey(value)
     self.settings.rageToggleKey = value or Enum.KeyCode.Unknown
+end
+
+function Rage:SetRagePrediction(value)
+    self.settings.ragePrediction = value == true
+end
+
+function Rage:SetRagePredictionAmount(value)
+    local number = tonumber(value)
+    if number then
+        self.settings.ragePredictionAmount = math.clamp(number, 0, 1)
+    end
+end
+
+function Rage:SetRagePartBias(value)
+    if value then
+        self.settings.ragePartBias = value
+    end
+end
+
+function Rage:SetRageTargetPriority(value)
+    if value then
+        self.settings.rageTargetPriority = value
+    end
+end
+
+function Rage:SetRageKillSwitch(value)
+    self.settings.rageKillSwitch = value == true
+end
+
+function Rage:SetRageBurstMode(value)
+    self.settings.rageBurstMode = value == true
+end
+
+function Rage:SetRageBurstCount(value)
+    local number = tonumber(value)
+    if number then
+        self.settings.rageBurstCount = math.clamp(number, 1, 20)
+    end
+end
+
+function Rage:SetRageBurstDelay(value)
+    local number = tonumber(value)
+    if number then
+        self.settings.rageBurstDelay = math.clamp(number, 1, 500)
+    end
+end
+
+function Rage:SetRageMaxRange(value)
+    local number = tonumber(value)
+    if number then
+        self.settings.rageMaxRange = math.clamp(number, 100, 50000)
+    end
 end
 
 function Rage:SetSilentAim(value)
@@ -1435,6 +1704,14 @@ end
 
 function Rage:GetAimlockMethod()
     return self.settings.aimlockMethod
+end
+
+function Rage:GetRagePartBias()
+    return self.settings.ragePartBias
+end
+
+function Rage:GetRageTargetPriority()
+    return self.settings.rageTargetPriority
 end
 
 function Rage:Destroy()
