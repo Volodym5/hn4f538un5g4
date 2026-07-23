@@ -129,6 +129,7 @@ end
 local combatTab  = Window:AddTab("Combat",  "sword")
 local skinsTab   = Window:AddTab("Skins",   "package")
 local visualsTab = Window:AddTab("Visuals", "eye")
+local configTab  = Window:AddTab("Config",  "settings")
 
 -- ============================================================
 -- COMBAT TAB — LEFT SIDE
@@ -162,7 +163,6 @@ aimbotBox:AddSlider("aimbot_Smoothing", {
     Callback = safeUi("Aimbot Smoothing", function(v) features.aimbot:SetSmoothing(v) end),
 })
 
---[[
 -- TriggerBot
 local triggerBox = combatTab:AddLeftGroupbox("TriggerBot")
 triggerBox:AddToggle("triggerbot_Enabled", {
@@ -200,7 +200,6 @@ aimlockBox:AddToggle("aimlock_Flickbot", {
     Text = "FlickBOT", Default = false,
     Callback = safeUi("FlickBOT", function(v) features.rage:SetFlickBot(v) end),
 })
-]]
 
 -- Silent Aim
 local silentBox = combatTab:AddLeftGroupbox("Silent Aim")
@@ -267,14 +266,12 @@ hitboxBox:AddSlider("hitbox_Transparency", {
     Callback = safeUi("Hitbox Transparency", function(v) features.hitbox:SetTransparency(v) end),
 })
 
---[[
 -- Rage
 local rageBox = combatTab:AddRightGroupbox("Rage")
 rageBox:AddToggle("rage_Mode", {
     Text = "Rage Mode", Default = false,
     Callback = safeUi("Rage Mode", function(v) features.rage:SetRageMode(v) end),
 })
-]]
 
 -- Targeting
 local targetingBox = combatTab:AddRightGroupbox("Targeting")
@@ -289,7 +286,7 @@ targetingBox:AddToggle("targeting_RandomPart", {
     Callback = safeUi("Random Part", function(v) features.rage:SetRandomPart(v) end),
 })
 targetingBox:AddToggle("targeting_360Fov", {
-    Text = "Target All Directions", Default = false,
+    Text = "360 FOV (All Directions)", Default = false,
     Callback = safeUi("360 FOV (All Directions)", function(v) features.rage:SetFullFov360(v) end),
 })
 targetingBox:AddToggle("targeting_AimWallCheck", {
@@ -304,7 +301,7 @@ targetingBox:AddToggle("targeting_TeamCheck", {
 -- Weapon Mods
 local weaponBox = combatTab:AddRightGroupbox("Weapon Mods")
 weaponBox:AddToggle("weapon_NoRecoil", {
-    Text = "No Recoil", Default = false,
+    Text = "Memory No Recoil", Default = false,
     Callback = safeUi("Memory No Recoil", function(v) features.rage:SetMemoryNoRecoil(v) end),
 })
 weaponBox:AddToggle("weapon_NoSpread", {
@@ -312,12 +309,12 @@ weaponBox:AddToggle("weapon_NoSpread", {
     Callback = safeUi("No Spread", function(v) features.rage:SetNoSpread(v) end),
 })
 weaponBox:AddToggle("weapon_AutoClicker", {
-    Text = "Rapid Fire", Default = false,
-    Callback = safeUi("Rapid Fire", function(v) features.rage:SetAutoClicker(v) end),
+    Text = "Auto Clicker (Hold LMB)", Default = false,
+    Callback = safeUi("Auto Clicker (Hold LMB)", function(v) features.rage:SetAutoClicker(v) end),
 })
 weaponBox:AddSlider("weapon_AutoClickDelay", {
-    Text = "Rapid Fire Delay (ms)", Default = 50, Min = 10, Max = 500, Rounding = 0,
-    Callback = safeUi("Rapid Fire Delay (ms)", function(v) features.rage:SetAutoClickDelay(v) end),
+    Text = "Auto Click Delay (ms)", Default = 50, Min = 10, Max = 500, Rounding = 0,
+    Callback = safeUi("Auto Click Delay (ms)", function(v) features.rage:SetAutoClickDelay(v) end),
 })
 weaponBox:AddToggle("weapon_InstantReload", {
     Text = "Instant Reload", Default = false,
@@ -560,7 +557,6 @@ chamsBox:AddLabel("Weapon Chams Color"):AddColorPicker("chams_WeaponColor", {
     Callback = function(v) features.chams:SetSetting("weaponColor", v) end,
 })
 
-
 -- Kill Effects
 local killBox = visualsTab:AddRightGroupbox("Kill Effects")
 killBox:AddToggle("killfx_Enabled", {
@@ -579,7 +575,6 @@ killBox:AddLabel("Kill Effect Color"):AddColorPicker("killfx_Color", {
     Default = Color3.fromRGB(255, 0, 100),
     Callback = function(v) features.killEffects:SetSetting("color", v) end,
 })
-
 
 -- World Effects
 local worldBox = visualsTab:AddRightGroupbox("World Effects")
