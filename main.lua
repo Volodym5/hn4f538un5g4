@@ -163,6 +163,7 @@ aimbotBox:AddSlider("aimbot_Smoothing", {
     Callback = safeUi("Aimbot Smoothing", function(v) features.aimbot:SetSmoothing(v) end),
 })
 
+--[[
 -- TriggerBot
 local triggerBox = combatTab:AddLeftGroupbox("TriggerBot")
 triggerBox:AddToggle("triggerbot_Enabled", {
@@ -200,6 +201,7 @@ aimlockBox:AddToggle("aimlock_Flickbot", {
     Text = "FlickBOT", Default = false,
     Callback = safeUi("FlickBOT", function(v) features.rage:SetFlickBot(v) end),
 })
+]]
 
 -- Silent Aim
 local silentBox = combatTab:AddLeftGroupbox("Silent Aim")
@@ -266,12 +268,14 @@ hitboxBox:AddSlider("hitbox_Transparency", {
     Callback = safeUi("Hitbox Transparency", function(v) features.hitbox:SetTransparency(v) end),
 })
 
+--[[
 -- Rage
 local rageBox = combatTab:AddRightGroupbox("Rage")
 rageBox:AddToggle("rage_Mode", {
     Text = "Rage Mode", Default = false,
     Callback = safeUi("Rage Mode", function(v) features.rage:SetRageMode(v) end),
 })
+]]
 
 -- Targeting
 local targetingBox = combatTab:AddRightGroupbox("Targeting")
@@ -298,16 +302,19 @@ targetingBox:AddToggle("targeting_TeamCheck", {
     Callback = safeUi("TeamCheck", function(v) features.rage:SetTeamCheck(v) end),
 })
 
+--[[
 -- Weapon Mods
 local weaponBox = combatTab:AddRightGroupbox("Weapon Mods")
 weaponBox:AddToggle("weapon_NoRecoil", {
     Text = "Memory No Recoil", Default = false,
     Callback = safeUi("Memory No Recoil", function(v) features.rage:SetMemoryNoRecoil(v) end),
 })
+]]
 weaponBox:AddToggle("weapon_NoSpread", {
     Text = "No Spread", Default = false,
     Callback = safeUi("No Spread", function(v) features.rage:SetNoSpread(v) end),
 })
+--[[
 weaponBox:AddToggle("weapon_AutoClicker", {
     Text = "Auto Clicker (Hold LMB)", Default = false,
     Callback = safeUi("Auto Clicker (Hold LMB)", function(v) features.rage:SetAutoClicker(v) end),
@@ -320,6 +327,7 @@ weaponBox:AddToggle("weapon_InstantReload", {
     Text = "Instant Reload", Default = false,
     Callback = safeUi("Instant Reload", function(v) features.rage:SetInstantReload(v) end),
 })
+
 weaponBox:AddToggle("weapon_InstaEquip", {
     Text = "Insta Equip", Default = false,
     Callback = safeUi("Insta Equip", function(v) features.rage:SetInstaEquip(v) end),
@@ -336,6 +344,7 @@ weaponBox:AddSlider("weapon_RCS_Delay", {
     Text = "RCS Delay", Default = 0, Min = 0, Max = 500, Rounding = 0,
     Callback = safeUi("RCS Delay", function(v) features.rage:SetRcsDelay(v) end),
 })
+]]
 
 -- ============================================================
 -- SKINS TAB
