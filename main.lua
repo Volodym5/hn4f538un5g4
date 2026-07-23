@@ -32,8 +32,14 @@ local TriggerBot     = CombatModules.TriggerBot
 local RapidFireSystem = CombatModules.RapidFireSystem  -- available if you uncomment below
 
 local Rage           = loadModule("src/features/combat/Rage.lua")
-local BunnyHop       = loadModule("src/features/movement/BunnyHop.lua")
-local MovementSpeed  = loadModule("src/features/movement/MovementSpeed.lua")
+
+-- ============================================================
+-- MOVEMENT MODULES — now loaded from the combined Movement.lua
+-- ============================================================
+local MovementMods   = loadModule("src/features/movement/Movement.lua")
+local BunnyHop       = MovementMods.BunnyHop
+local MovementSpeed  = MovementMods.MovementSpeed
+
 local ESP            = loadModule("src/features/visuals/ESP.lua")
 local Chams          = loadModule("src/features/visuals/Chams.lua")
 --local BulletTracers   = loadModule("src/features/visuals/BulletTracers.lua")
