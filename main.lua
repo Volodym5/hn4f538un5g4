@@ -22,11 +22,16 @@ local SaveManager = Library.SaveManager
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 
-local Aimbot         = loadModule("src/features/combat/Aimbot.lua")
-local TriggerBot     = loadModule("src/features/combat/TriggerBot.lua")
-local Hitbox         = loadModule("src/features/combat/Hitbox.lua")
+-- ============================================================
+-- COMBAT MODULES — now loaded from the combined Aimbot.lua
+-- ============================================================
+local CombatModules  = loadModule("src/features/combat/Aimbot.lua")
+local Aimbot         = CombatModules.Aimbot
+local Hitbox         = CombatModules.Hitbox
+local TriggerBot     = CombatModules.TriggerBot
+local RapidFireSystem = CombatModules.RapidFireSystem  -- available if you uncomment below
+
 local Rage           = loadModule("src/features/combat/Rage.lua")
---local RapidFire    = loadModule("src/features/combat/RapidFire.lua")
 local BunnyHop       = loadModule("src/features/movement/BunnyHop.lua")
 local MovementSpeed  = loadModule("src/features/movement/MovementSpeed.lua")
 local ESP            = loadModule("src/features/visuals/ESP.lua")
@@ -57,7 +62,7 @@ local features = {
     triggerBot   = TriggerBot.new(context),
     hitbox       = Hitbox.new(context),
     rage         = Rage.new(context),
-    --rapidFire  = RapidFire.new(context),
+    --rapidFire  = RapidFireSystem.new(context),  -- uncomment if you want to use it
     bunnyHop     = BunnyHop.new(context),
     movementSpeed = MovementSpeed.new(context),
     esp          = ESP.new(context),
