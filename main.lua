@@ -129,7 +129,6 @@ end
 local combatTab  = Window:AddTab("Combat",  "sword")
 local skinsTab   = Window:AddTab("Skins",   "package")
 local visualsTab = Window:AddTab("Visuals", "eye")
-local configTab  = Window:AddTab("Config",  "settings")
 
 -- ============================================================
 -- COMBAT TAB — LEFT SIDE
