@@ -561,6 +561,7 @@ chamsBox:AddLabel("Weapon Chams Color"):AddColorPicker("chams_WeaponColor", {
     Callback = function(v) features.chams:SetSetting("weaponColor", v) end,
 })
 
+
 -- Kill Effects
 local killBox = visualsTab:AddRightGroupbox("Kill Effects")
 killBox:AddToggle("killfx_Enabled", {
@@ -579,6 +580,7 @@ killBox:AddLabel("Kill Effect Color"):AddColorPicker("killfx_Color", {
     Default = Color3.fromRGB(255, 0, 100),
     Callback = function(v) features.killEffects:SetSetting("color", v) end,
 })
+
 
 -- World Effects
 local worldBox = visualsTab:AddRightGroupbox("World Effects")
